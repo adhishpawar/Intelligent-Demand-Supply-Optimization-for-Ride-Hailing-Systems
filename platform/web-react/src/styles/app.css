@@ -101,6 +101,9 @@ button.btn.ghost { background: transparent; border: 1px solid var(--border); col
   animation: fadein 0.2s;
 }
 .seed-hint { margin-top: 14px; line-height: 1.5; }
+.live-indicator { font-size: 0.72rem; font-weight: 600; vertical-align: middle; }
+.live-indicator.live { color: var(--good); }
+.live-indicator.reconnecting { color: var(--warn); }
 .role-badge.rider { color: var(--accent); }
 .role-badge.driver { color: var(--good); }
 .role-badge.admin { color: var(--accent-2); }

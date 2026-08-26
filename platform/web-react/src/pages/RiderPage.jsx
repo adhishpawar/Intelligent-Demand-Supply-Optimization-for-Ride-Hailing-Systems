@@ -5,6 +5,7 @@ import StatusPill from "../components/StatusPill";
 import { api, ApiError, loadSession, wsUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useReconnectingSocket } from "../hooks/useReconnectingSocket";
 
 const TERMINAL_STATUSES = new Set([
   "NO_DRIVER_FOUND", "EXPIRED", "CANCELLED_BY_RIDER", "CANCELLED_BY_DRIVER", "CANCELLED_BY_SYSTEM", "RATED",
@@ -21,7 +22,6 @@ export default function RiderPage() {
   const dropMarkerRef = useRef(null);
   const driverMarkerRef = useRef(null);
   const pickModeRef = useRef("pickup");
-  const wsRef = useRef(null);
   const pollTimerRef = useRef(null);
 
   const [pickup, setPickup] = useState(null);
@@ -122,15 +122,24 @@ export default function RiderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
 
-  // Poll + WS lifecycle for the active trip.
+  // Background poll — the backstop. Always running while a trip is active,
+  // independent of the WebSocket's health, so a status change is never missed
+  // purely because a socket happened to be reconnecting at that moment.
   useEffect(() => {
     if (!tripId) return;
     pollTrip();
     pollTimerRef.current = setInterval(pollTrip, 1500);
+    return () => clearInterval(pollTimerRef.current);
+  }, [tripId, pollTrip]);
 
-    const s = loadSession();
-    const ws = new WebSocket(wsUrl("trip", `/v1/ws/trips/${tripId}/track`, s.access_token));
-    ws.onmessage = (evt) => {
+  // Live position push, over a self-reconnecting socket (PLAN §5.1 never-cut tier:
+  // "WebSocket reconnect/backfill"). `onOpen` re-polls immediately on every
+  // (re)connect — the equivalent of the driver-side offer catch-up, applied here to
+  // "did I miss a status change while the socket was down."
+  const trackWsUrl = tripId ? wsUrl("trip", `/v1/ws/trips/${tripId}/track`, loadSession()?.access_token) : null;
+  const { connected: trackerConnected } = useReconnectingSocket(trackWsUrl, {
+    onOpen: pollTrip,
+    onMessage: (evt) => {
       const data = JSON.parse(evt.data);
       if (data.type === "DRIVER_POSITION") {
         const latlng = [data.lat, data.lng];
@@ -139,14 +148,8 @@ export default function RiderPage() {
       } else if (data.status) {
         pollTrip();
       }
-    };
-    wsRef.current = ws;
-
-    return () => {
-      clearInterval(pollTimerRef.current);
-      ws.close();
-    };
-  }, [tripId, pollTrip]);
+    },
+  });
 
   const status = trip?.status;
 
@@ -171,7 +174,7 @@ export default function RiderPage() {
             <TripPanel
               trip={trip} status={status} onCancel={cancelTrip} onBookAnother={bookAnotherRide}
               stars={stars} setStars={setStars} comment={comment} setComment={setComment}
-              onSubmitRating={submitRating}
+              onSubmitRating={submitRating} liveConnected={trackerConnected}
             />
           )}
         </div>
@@ -203,12 +206,19 @@ function BookingPanel({ pickup, drop, estimate, onReset, onRequest }) {
   );
 }
 
-function TripPanel({ trip, status, onCancel, onBookAnother, stars, setStars, comment, setComment, onSubmitRating }) {
+function TripPanel({ trip, status, onCancel, onBookAnother, stars, setStars, comment, setComment, onSubmitRating, liveConnected }) {
   if (!trip) return <div className="card"><div className="muted">Loading trip…</div></div>;
+
+  const showLiveIndicator = ["DRIVER_ASSIGNED", "DRIVER_ARRIVING", "DRIVER_ARRIVED", "IN_PROGRESS"].includes(status);
 
   return (
     <div className="card">
       <StatusPill status={status} />
+      {showLiveIndicator && (
+        <span className={`live-indicator ${liveConnected ? "live" : "reconnecting"}`} style={{ marginLeft: 8 }}>
+          {liveConnected ? "● live" : "○ reconnecting…"}
+        </span>
+      )}
       <div style={{ marginTop: 12 }} className="muted">Trip {trip.trip_id.slice(0, 8)}…</div>
       {trip.fare_final != null && (
         <div className="fare-line total"><span>Fare</span><span>₹{trip.fare_final.toFixed(2)}</span></div>
