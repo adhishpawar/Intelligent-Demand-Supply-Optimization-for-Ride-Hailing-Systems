@@ -42,4 +42,5 @@ async def get_identity_service(
         dev_mode=(settings.environment == "dev"),
         otp_rate_limit_max_requests=settings.otp_rate_limit_max_requests,
         otp_rate_limit_window_seconds=settings.otp_rate_limit_window_seconds,
+        otp_verify_max_attempts=settings.otp_verify_max_attempts,
     )

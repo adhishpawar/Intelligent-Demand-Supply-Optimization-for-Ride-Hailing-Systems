@@ -273,22 +273,52 @@ class OtpRepository:
         ).first()
         return int(row[0]) if row else 0
 
-    async def verify_and_consume(self, phone: str, code: str) -> bool:
+    async def verify_and_consume(self, phone: str, code: str, max_attempts: int = 5) -> bool:
+        """Round 14 stakeholder council (tech lead, security): Round 2 rate-limited
+        OTP *requests*; nothing ever rate-limited OTP *verify* attempts. A 6-digit
+        code (1 in 1,000,000) with no lockout is brute-forceable well within its
+        5-minute TTL at any meaningful request rate. This locks the specific
+        pending code out after `max_attempts` wrong guesses -- the standard defense
+        (lock the code, not just throttle the endpoint) -- rather than counting
+        calls in general the way Round 2's OTP-request limiter does.
+
+        Looks up the most recent pending code for this phone REGARDLESS of what
+        `code` was submitted, so an attempt against a locked-out code is rejected
+        even if it happens to be correct -- the lockout has to be unconditional to
+        actually stop a brute force, not just discourage a lucky first guess."""
         row = (
             await self._session.execute(
                 text(
                     """
-                    SELECT id FROM otp_codes
-                    WHERE phone = :phone AND code = :code AND consumed_at IS NULL AND expires_at > now()
+                    SELECT id, code, attempt_count FROM otp_codes
+                    WHERE phone = :phone AND consumed_at IS NULL AND expires_at > now()
                     ORDER BY created_at DESC LIMIT 1
                     """
                 ),
-                {"phone": phone, "code": code},
+                {"phone": phone},
             )
         ).first()
         if row is None:
+            return False  # no active code at all
+        otp_id, real_code, attempt_count = row
+        if attempt_count >= max_attempts:
+            return False  # locked out -- even the correct code no longer works; request a new one
+
+        if real_code != code:
+            await self._session.execute(
+                text("UPDATE otp_codes SET attempt_count = attempt_count + 1 WHERE id = :id"), {"id": otp_id}
+            )
+            # Explicit commit: verify_otp() raises UnauthorizedError right after
+            # this returns False, and identity's container.py wraps every request
+            # in `async with session.begin():` -- an exception propagating out of
+            # that block rolls back the WHOLE transaction, which would silently
+            # undo this exact increment every single time, making the lockout
+            # never actually engage (found by testing: attempt_count stayed 0 in
+            # Postgres after 5 real wrong-code requests, until this commit was added).
+            await self._session.commit()
             return False
+
         await self._session.execute(
-            text("UPDATE otp_codes SET consumed_at = now() WHERE id = :id"), {"id": row[0]}
+            text("UPDATE otp_codes SET consumed_at = now() WHERE id = :id"), {"id": otp_id}
         )
         return True
