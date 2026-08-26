@@ -24,6 +24,38 @@ async def charge(
     return ChargeResultResponse(**result)
 
 
+@router.get("/v1/payments/analytics/summary")
+async def get_revenue_summary(
+    # Round 3 stakeholder council (admin/tech-lead pain): the ledger has always been
+    # real and balanced (RIDER_CHARGE / DRIVER_PAYOUT_CREDIT / PLATFORM_COMMISSION_
+    # CREDIT per trip), but an admin could only ever see it one trip at a time via
+    # the trip-detail ledger view -- there was no "how is the platform doing today"
+    # rollup anywhere. Registered ahead of GET /v1/payments/{trip_id} -- same
+    # must-precede-the-parameterised-route ordering as GET /v1/trips/mine.
+    _principal: Principal = Depends(require_roles(Role.ADMIN)),
+    session=Depends(get_session),
+):
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                    COALESCE(SUM(amount) FILTER (WHERE entry_type = 'PLATFORM_COMMISSION_CREDIT'), 0) AS commission_total,
+                    COALESCE(SUM(-amount) FILTER (WHERE entry_type = 'RIDER_CHARGE'), 0) AS gross_fares_total,
+                    COUNT(DISTINCT trip_id) FILTER (WHERE entry_type = 'RIDER_CHARGE') AS paid_trip_count
+                FROM ledger_entries
+                WHERE created_at >= date_trunc('day', now())
+                """
+            )
+        )
+    ).mappings().first()
+    return {
+        "commission_total": float(row["commission_total"]),
+        "gross_fares_total": float(row["gross_fares_total"]),
+        "paid_trip_count": int(row["paid_trip_count"]),
+    }
+
+
 @router.get("/v1/payments/{trip_id}")
 async def get_payment(trip_id: str, _principal: Principal = Depends(get_principal), session=Depends(get_session)):
     repo = PaymentRepository(session)

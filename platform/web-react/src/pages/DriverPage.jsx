@@ -6,6 +6,7 @@ import { api, loadSession, wsUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useReconnectingSocket } from "../hooks/useReconnectingSocket";
+import NotificationBell from "../components/NotificationBell";
 
 const PING_INTERVAL_MS = 3000;
 const TRIP_STORAGE_KEY = "ridehail_driver_current_trip";
@@ -239,6 +240,7 @@ export default function DriverPage() {
       <div className="topbar">
         <div className="brand"><span className="dot" /> Glovatrix <span className="role-badge driver">Driver</span></div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <NotificationBell />
           <span className="muted">{userId?.slice(0, 8)}</span>
           <button className="link" onClick={logout}>Sign out</button>
         </div>
