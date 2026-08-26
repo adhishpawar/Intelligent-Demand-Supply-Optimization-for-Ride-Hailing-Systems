@@ -61,6 +61,15 @@ export default function DriverPage() {
   }, [trip, userId]);
 
   async function goOnline() {
+    // Round 5 stakeholder council (tech lead/compliance): matching now correctly
+    // refuses to dispatch an unverified driver (see services/matching/repository.py),
+    // but that backend fix alone would leave an unverified driver clicking "Go
+    // online", seeing themselves as online, and then never understanding why no
+    // rides ever arrive. This surfaces the real reason up front instead.
+    if (myStats && !myStats.kyc_verified) {
+      toast("Your account is pending verification -- you can't go online yet.");
+      return;
+    }
     try {
       await api.patch(`/v1/drivers/${userId}/status`, { status: "ONLINE" });
       setOnline(true);
@@ -105,6 +114,7 @@ export default function DriverPage() {
         rating_avg: profile.rating_avg,
         acceptance_rate: driverInfo.acceptance_rate,
         rides_completed: driverInfo.rides_completed,
+        kyc_verified: driverInfo.kyc_verified,
       });
     } catch {
       /* non-critical -- stats panel just stays hidden */
@@ -241,8 +251,13 @@ export default function DriverPage() {
         <div className="panel">
           <div className="card">
             <h3>Status</h3>
+            {myStats && !myStats.kyc_verified && (
+              <div className="confirm-inline" style={{ marginTop: 10, marginBottom: 0 }}>
+                Your account is pending verification. You can't go online until an admin verifies your KYC.
+              </div>
+            )}
             <div className="row" style={{ marginTop: 8 }}>
-              <button className="btn success" disabled={online} onClick={goOnline}>Go online</button>
+              <button className="btn success" disabled={online || (myStats && !myStats.kyc_verified)} onClick={goOnline}>Go online</button>
               <button className="btn ghost" disabled={!online} onClick={goOffline}>Go offline</button>
             </div>
             <div className="muted" style={{ marginTop: 10 }}>{online ? "Online — pinging location every 3s" : "Offline — not matchable"}</div>

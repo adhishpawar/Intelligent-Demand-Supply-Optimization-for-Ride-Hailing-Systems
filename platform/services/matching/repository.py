@@ -14,9 +14,19 @@ async def validate_and_enrich(
     session: AsyncSession, candidate_ids: list[str]
 ) -> dict[str, dict]:
     """Returns {driver_id: {rating_avg, acceptance_rate}} for exactly the candidates
-    that are (a) still ONLINE in driver_profiles and (b) not already assigned to an
-    active trip -- both re-checked here even though Redis is supposed to already
-    reflect this, because Redis is a cache of the truth, not the truth."""
+    that are (a) still ONLINE in driver_profiles, (b) not already assigned to an
+    active trip, and (c) KYC-verified -- all three re-checked here even though Redis
+    is supposed to already reflect (a)/(b), because Redis is a cache of the truth,
+    not the truth.
+
+    (c) is a Round 5 stakeholder council (tech lead/compliance) fix: `kyc_verified`
+    was written by the admin KYC toggle and read by every driver-profile display, but
+    nothing anywhere ever gated matching on it -- an unverified (or KYC-revoked)
+    driver could go online and be dispatched real rides identically to a verified
+    one. This is the one place that decides who a rider is actually matched with, so
+    it's the correct enforcement point, not the go-online endpoint (which is
+    Location's, a different service, and "can this driver toggle their own status"
+    is a different question from "can this driver actually carry a passenger")."""
     if not candidate_ids:
         return {}
     rows = (
@@ -28,6 +38,7 @@ async def validate_and_enrich(
                 JOIN users u ON u.user_id = dp.driver_id
                 WHERE dp.driver_id = ANY(:ids)
                   AND dp.status = 'ONLINE'
+                  AND dp.kyc_verified = TRUE
                   AND dp.driver_id NOT IN (
                       SELECT driver_id FROM trips
                       WHERE driver_id IS NOT NULL
