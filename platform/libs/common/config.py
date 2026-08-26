@@ -25,8 +25,11 @@ class Settings(BaseSettings):
 
     kafka_bootstrap: str = "localhost:9092"
 
-    # EVENT_BUS = "kafka" | "inprocess" — PLAN §5.1 amendment AM-... fallback switch.
-    event_bus: str = "inprocess"
+    # EVENT_BUS = "kafka" | "inprocess" — PLAN §5.1 fallback switch. Kafka is up
+    # natively tonight (see PROGRESS.md) so it's the default; flip to "inprocess"
+    # instantly if it ever misbehaves — both are proven equivalent by
+    # tests/integration/test_eventbus_roundtrip.py running against both.
+    event_bus: str = "kafka"
 
     # LOCATION_HISTORY_BACKEND = "postgres" | "cassandra" — PLAN §4.4.
     location_history_backend: str = "postgres"

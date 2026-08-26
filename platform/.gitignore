@@ -17,6 +17,7 @@ infra/native/redis/*.dll
 infra/native/redis/00-RELEASENOTES
 infra/native/redis/*.txt
 infra/native/kafka/
+infra/native/kafka_*/
 
 # runtime logs
 *.log

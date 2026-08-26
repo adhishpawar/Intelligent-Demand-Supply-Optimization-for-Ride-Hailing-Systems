@@ -43,9 +43,14 @@ local seq = redis.call('HINCRBY', KEYS[1], 'state_seq', 1)
 redis.call('HSET', KEYS[1], 'status', ARGV[1], 'city_id', ARGV[3])
 if ARGV[1] ~= 'ONLINE' then
     redis.call('ZREM', KEYS[2], ARGV[2])
+    redis.call('SREM', KEYS[3], ARGV[2])
+else
+    redis.call('SADD', KEYS[3], ARGV[2])
 end
 return seq
 """
+
+ONLINE_DRIVERS_SET = "drivers:online"  # bounded candidate set for the staleness sweeper — never a full KEYS scan
 
 INGEST_ACCEPTED = 1
 INGEST_REJECTED_NOT_ONLINE = 0
@@ -74,8 +79,18 @@ class DriverIndexRepository:
 
     async def set_status(self, driver_id: str, status: str, city_id: str) -> int:
         return await self._redis.eval(
-            _SET_STATUS_SCRIPT, 2, self._hash_key(driver_id), self._geo_key(city_id), status, driver_id, city_id
+            _SET_STATUS_SCRIPT,
+            3,
+            self._hash_key(driver_id),
+            self._geo_key(city_id),
+            ONLINE_DRIVERS_SET,
+            status,
+            driver_id,
+            city_id,
         )
+
+    async def list_online_driver_ids(self) -> set[str]:
+        return await self._redis.smembers(ONLINE_DRIVERS_SET)
 
     async def ingest_ping(
         self, driver_id: str, city_id: str, lat: float, lng: float, heading: float, speed_kmh: float, ts_epoch: float
