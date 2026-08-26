@@ -52,8 +52,12 @@ async def test_two_concurrent_dispatches_claim_the_same_driver_exactly_once() ->
             )
             await session.execute(
                 text(
-                    "INSERT INTO driver_profiles (driver_id, status, city_id, acceptance_rate) "
-                    "VALUES (:id, 'ONLINE', 'pune', 0.95)"
+                    # kyc_verified explicit TRUE: Round 5 stakeholder council added a
+                    # kyc_verified = TRUE filter to validate_and_enrich (the schema
+                    # default is FALSE) -- this test's driver needs to be a genuinely
+                    # matchable candidate, not exercising KYC gating itself.
+                    "INSERT INTO driver_profiles (driver_id, status, city_id, acceptance_rate, kyc_verified) "
+                    "VALUES (:id, 'ONLINE', 'pune', 0.95, TRUE)"
                 ),
                 {"id": driver_id},
             )

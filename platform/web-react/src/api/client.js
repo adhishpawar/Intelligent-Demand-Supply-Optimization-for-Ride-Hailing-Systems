@@ -39,7 +39,43 @@ export function clearSession() {
   store.removeItem(SESSION_KEY);
 }
 
-async function request(method, path, body) {
+// Round 5 stakeholder council (tech lead): found live during this round's own
+// testing -- a browser tab left open past `jwt_access_ttl_seconds` (1 hour) had
+// EVERY subsequent call fail with 401, forever, with no path back except manually
+// signing out and re-verifying OTP from scratch. The access token expiring is
+// completely normal; having no refresh path is the actual bug -- `refresh_token`
+// (14-day TTL) was already being stored on login and never used for anything.
+// `refreshPromise` collapses concurrent 401s (e.g. several in-flight requests all
+// hitting the same expired token at once) into a single refresh call.
+let refreshPromise = null;
+
+async function doRefresh() {
+  const session = loadSession();
+  if (!session?.refresh_token) return null;
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${GATEWAY_BASE}/v1/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: session.refresh_token }),
+    })
+      .then(async (resp) => {
+        if (!resp.ok) return null;
+        const fresh = await resp.json();
+        // /v1/auth/refresh rotates both tokens (a fresh refresh_token too, per
+        // services/identity/service.py) -- `fresh` wins on both.
+        const merged = { ...session, ...fresh };
+        saveSession(merged);
+        return merged;
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+async function request(method, path, body, _isRetry = false) {
   const session = loadSession();
   const headers = { "Content-Type": "application/json" };
   if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
@@ -49,6 +85,17 @@ async function request(method, path, body) {
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+
+  if (resp.status === 401 && !_isRetry && session?.refresh_token) {
+    const refreshed = await doRefresh();
+    if (refreshed) return request(method, path, body, true);
+    // Refresh token itself is invalid/expired -- there is genuinely no way back
+    // short of signing in again. Clear the stale session and reload so the app
+    // re-reads (nothing) from storage and lands cleanly on the login screen,
+    // instead of leaving a role page up that will 401 on every next action too.
+    clearSession();
+    window.location.reload();
+  }
 
   const text = await resp.text();
   let data = null;
