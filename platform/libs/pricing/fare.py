@@ -12,6 +12,27 @@ from libs.geo.cities import RateCard
 SURGE_RATIO_FREE_THRESHOLD = 1.0
 SURGE_SLOPE = 0.5
 
+# Round 7 stakeholder council: the vehicle_type taxonomy (V001) and the seeded
+# drivers' deliberately diverse type spread (tools/seed.py) existed all night with
+# zero fare differentiation anywhere -- every ride cost the same regardless of
+# requested vehicle type. REAL-LITE for now (a flat per-type multiplier, hardcoded
+# here rather than a new per-city-per-type row in `city_configs`) -- the same
+# phased-realism bar the original city rate cards were built to before Round 1 made
+# them DB-configurable. Applied to the base fare, before surge, since vehicle class
+# is a baseline-rate difference, not a demand phenomenon; surge still multiplies on
+# top of whatever the base already reflects.
+VEHICLE_TYPE_MULTIPLIERS: dict[str, float] = {
+    "BIKE": 0.45,
+    "AUTO": 0.65,
+    "HATCHBACK": 0.90,
+    "SEDAN": 1.00,
+    "SUV": 1.35,
+}
+
+
+def vehicle_type_multiplier(vehicle_type: str) -> float:
+    return VEHICLE_TYPE_MULTIPLIERS.get(vehicle_type, 1.0)
+
 
 def compute_surge_multiplier(active_requests: int, available_drivers: int, cap: float) -> float:
     """HLD 3.5:
@@ -30,9 +51,12 @@ def compute_surge_multiplier(active_requests: int, available_drivers: int, cap: 
     return min(1.0 + (ratio - 1.0) * SURGE_SLOPE, cap)
 
 
-def estimate_fare(rate_card: RateCard, distance_m: float, duration_s: float, surge_multiplier: float) -> float:
+def estimate_fare(
+    rate_card: RateCard, distance_m: float, duration_s: float, surge_multiplier: float, vehicle_type: str = "SEDAN"
+) -> float:
     distance_km = distance_m / 1000.0
     duration_min = duration_s / 60.0
     base_fare = rate_card.base_fare + (distance_km * rate_card.per_km_rate) + (duration_min * rate_card.per_min_rate)
+    base_fare *= vehicle_type_multiplier(vehicle_type)
     final_fare = base_fare * surge_multiplier + rate_card.booking_fee
     return round(final_fare, 2)

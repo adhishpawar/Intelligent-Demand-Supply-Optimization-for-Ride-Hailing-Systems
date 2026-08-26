@@ -11,6 +11,10 @@ class LatLng(BaseModel):
 class EstimateRequest(BaseModel):
     pickup: LatLng
     drop: LatLng
+    # Round 7 stakeholder council: so the pre-request fare estimate the rider sees
+    # actually matches what request_ride() will charge for the same vehicle_type
+    # (libs/pricing/fare.py's estimate_fare, the one shared formula both call).
+    vehicle_type: str = Field(default="SEDAN", pattern="^(SEDAN|HATCHBACK|SUV|AUTO|BIKE)$")
 
 
 class EstimateResponse(BaseModel):

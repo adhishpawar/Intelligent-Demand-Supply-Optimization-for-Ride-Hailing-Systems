@@ -40,7 +40,9 @@ class TripService:
         self._matching = matching_client
         self._settings = settings
 
-    async def request_ride(self, rider_id: str, pickup: tuple[float, float], drop: tuple[float, float]) -> TripRecord:
+    async def request_ride(
+        self, rider_id: str, pickup: tuple[float, float], drop: tuple[float, float], vehicle_type: str = "SEDAN",
+    ) -> TripRecord:
         city = city_for(*pickup)
         if city is None:
             raise ConflictError("pickup location is outside any served city", lat=pickup[0], lng=pickup[1])
@@ -70,13 +72,14 @@ class TripService:
             # read live, inside the same transaction, rather than the in-memory
             # default.
             rate_card = await get_rate_card(uow.session, city.city_id)
-            fare_estimate = estimate_fare(rate_card, distance_m, duration_s, surge)
+            fare_estimate = estimate_fare(rate_card, distance_m, duration_s, surge, vehicle_type)
             trip = await repo.create(
                 rider_id=rider_id, city_id=city.city_id,
                 pickup_lat=pickup[0], pickup_lng=pickup[1], pickup_geohash7=pickup_geohash,
                 drop_lat=drop[0], drop_lng=drop[1], drop_geohash7=geohash_encode(drop[0], drop[1]),
                 fare_estimate=fare_estimate, surge_multiplier=surge,
                 matching_deadline_seconds=self._settings.matching_deadline_seconds,
+                vehicle_type_requested=vehicle_type,
             )
             trip = await repo.apply_transition(
                 trip.trip_id, Event.START_MATCHING, now=utcnow(),
@@ -117,6 +120,7 @@ class TripService:
             result = await self._matching.dispatch(
                 trip_id=trip_id, city_id=trip.city_id,
                 pickup_lat=trip.pickup_lat, pickup_lng=trip.pickup_lng, excluded_driver_ids=excluded,
+                vehicle_type=trip.vehicle_type_requested,
             )
 
             offer_fields = {}
@@ -271,7 +275,7 @@ class TripService:
             distance_m = eta_estimator.distance_m(trip.pickup_lat, trip.pickup_lng, trip.drop_lat, trip.drop_lng)
             duration_s = (utcnow() - (trip.requested_at)).total_seconds()
             rate_card = await get_rate_card(uow.session, trip.city_id)
-            fare_final = estimate_fare(rate_card, distance_m, duration_s, trip.surge_multiplier)
+            fare_final = estimate_fare(rate_card, distance_m, duration_s, trip.surge_multiplier, trip.vehicle_type_requested)
 
             trip = await repo.apply_transition(
                 trip.trip_id, Event.COMPLETE_TRIP, now=utcnow(), max_dispatch_attempts=self._settings.max_dispatch_attempts,

@@ -13,6 +13,10 @@ class DispatchRequest(BaseModel):
     pickup_lat: float
     pickup_lng: float
     excluded_driver_ids: list[str] = []
+    # Round 7 stakeholder council: which of the five vehicle types (V001) the rider
+    # actually asked for -- see services/matching/repository.py's validate_and_enrich
+    # docstring for why filtering happens there, not in the Redis geo search.
+    vehicle_type: str = "SEDAN"
 
 
 class DispatchResponse(BaseModel):

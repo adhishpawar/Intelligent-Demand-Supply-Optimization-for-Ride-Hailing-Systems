@@ -39,6 +39,8 @@ async def test_two_concurrent_dispatches_claim_the_same_driver_exactly_once() ->
     trip_a = str(uuid.uuid4())
     trip_b = str(uuid.uuid4())
 
+    vehicle_id = str(uuid.uuid4())
+
     try:
         # Seed one ONLINE driver directly (bypassing the identity/location services
         # for test isolation) with real rows the dispatcher's validation query reads.
@@ -52,14 +54,26 @@ async def test_two_concurrent_dispatches_claim_the_same_driver_exactly_once() ->
             )
             await session.execute(
                 text(
+                    # Round 7: validate_and_enrich now inner-joins vehicles via
+                    # driver_profiles.vehicle_id and filters by vehicle_type -- a
+                    # driver with no vehicle attached is now correctly excluded from
+                    # every dispatch (a real state a registration with no vehicle
+                    # details can leave a driver in), so this test's driver needs one.
+                    "INSERT INTO vehicles (vehicle_id, driver_id, make, model, plate_number, vehicle_type) "
+                    "VALUES (:vid, :id, 'Test', 'Racer', 'TEST-001', 'SEDAN')"
+                ),
+                {"vid": vehicle_id, "id": driver_id},
+            )
+            await session.execute(
+                text(
                     # kyc_verified explicit TRUE: Round 5 stakeholder council added a
                     # kyc_verified = TRUE filter to validate_and_enrich (the schema
                     # default is FALSE) -- this test's driver needs to be a genuinely
                     # matchable candidate, not exercising KYC gating itself.
-                    "INSERT INTO driver_profiles (driver_id, status, city_id, acceptance_rate, kyc_verified) "
-                    "VALUES (:id, 'ONLINE', 'pune', 0.95, TRUE)"
+                    "INSERT INTO driver_profiles (driver_id, vehicle_id, status, city_id, acceptance_rate, kyc_verified) "
+                    "VALUES (:id, :vid, 'ONLINE', 'pune', 0.95, TRUE)"
                 ),
-                {"id": driver_id},
+                {"id": driver_id, "vid": vehicle_id},
             )
             await session.commit()
 
@@ -99,7 +113,11 @@ async def test_two_concurrent_dispatches_claim_the_same_driver_exactly_once() ->
         assert len(losers) == 1, "the losing dispatch must return no driver, not a duplicate claim"
     finally:
         async with sessionmaker() as session:
+            # Round 7 added a vehicles row for this driver (see the vehicle_type
+            # filter comment above) -- must be deleted before users, or the FK from
+            # vehicles.driver_id -> users.user_id blocks the delete.
             await session.execute(text("DELETE FROM driver_profiles WHERE driver_id = :id"), {"id": driver_id})
+            await session.execute(text("DELETE FROM vehicles WHERE driver_id = :id"), {"id": driver_id})
             await session.execute(text("DELETE FROM users WHERE user_id = :id"), {"id": driver_id})
             await session.commit()
         await redis.delete(f"driver:{driver_id}", "drivers:city:pune", f"driver_claim:{driver_id}")

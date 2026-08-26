@@ -30,6 +30,10 @@ export default function RiderPage() {
   const [pickup, setPickup] = useState(null);
   const [drop, setDrop] = useState(null);
   const [estimate, setEstimate] = useState(null);
+  // Round 7 stakeholder council: the vehicle_type taxonomy (SEDAN/HATCHBACK/SUV/
+  // AUTO/BIKE) has existed since V001 and the seeded drivers were already spread
+  // across all five -- the rider just never had a way to ask for one.
+  const [vehicleType, setVehicleType] = useState("SEDAN");
   const [tripId, setTripId] = useState(() => sessionStorage.getItem(TRIP_STORAGE_KEY));
   const [trip, setTrip] = useState(null);
   const [stars, setStars] = useState(0);
@@ -39,14 +43,22 @@ export default function RiderPage() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
 
-  const fetchEstimate = useCallback(async (p, d) => {
+  const fetchEstimate = useCallback(async (p, d, vType) => {
     if (!p || !d) return setEstimate(null);
     try {
-      setEstimate(await api.post("/v1/pricing/estimate", { pickup: p, drop: d }));
+      setEstimate(await api.post("/v1/pricing/estimate", { pickup: p, drop: d, vehicle_type: vType }));
     } catch (e) {
       toast(e.message);
     }
   }, [toast]);
+
+  // Re-quote whenever the rider changes vehicle type after pins are already set,
+  // so the shown estimate never silently goes stale relative to what Request ride
+  // will actually charge.
+  useEffect(() => {
+    if (pickup && drop) fetchEstimate(pickup, drop, vehicleType);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicleType]);
 
   const handleMapClick = useCallback((e) => {
     if (tripId) return; // no re-picking pins once a ride is in flight
@@ -64,11 +76,11 @@ export default function RiderPage() {
       else dropMarkerRef.current = L.marker(e.latlng, { title: "Drop" }).addTo(map);
       pickModeRef.current = "pickup";
       setPickup((p) => {
-        fetchEstimate(p, latlng);
+        fetchEstimate(p, latlng, vehicleType);
         return p;
       });
     }
-  }, [tripId, toast, fetchEstimate]);
+  }, [tripId, toast, fetchEstimate, vehicleType]);
 
   function resetPins() {
     setPickup(null);
@@ -81,7 +93,7 @@ export default function RiderPage() {
 
   async function requestRide() {
     try {
-      const created = await api.post("/v1/trips", { pickup, drop });
+      const created = await api.post("/v1/trips", { pickup, drop, vehicle_type: vehicleType });
       setTripId(created.trip_id);
       sessionStorage.setItem(TRIP_STORAGE_KEY, created.trip_id);
       setTrip(created);
@@ -104,6 +116,7 @@ export default function RiderPage() {
     setTrip(null);
     setStars(0);
     setComment("");
+    setVehicleType("SEDAN");
     setShowCancelConfirm(false);
     if (driverMarkerRef.current) { mapRef.current.removeLayer(driverMarkerRef.current); driverMarkerRef.current = null; }
     resetPins();
@@ -232,6 +245,7 @@ export default function RiderPage() {
             <BookingPanel
               pickup={pickup} drop={drop} estimate={estimate}
               onReset={resetPins} onRequest={requestRide}
+              vehicleType={vehicleType} setVehicleType={setVehicleType}
             />
           ) : (
             <TripPanel
@@ -248,7 +262,15 @@ export default function RiderPage() {
   );
 }
 
-function BookingPanel({ pickup, drop, estimate, onReset, onRequest }) {
+const VEHICLE_TYPES = [
+  { value: "BIKE", label: "🏍️ Bike" },
+  { value: "AUTO", label: "🛺 Auto" },
+  { value: "HATCHBACK", label: "🚕 Hatchback" },
+  { value: "SEDAN", label: "🚗 Sedan" },
+  { value: "SUV", label: "🚙 SUV" },
+];
+
+function BookingPanel({ pickup, drop, estimate, onReset, onRequest, vehicleType, setVehicleType }) {
   return (
     <div className="card">
       <h3>Where to?</h3>
@@ -256,6 +278,23 @@ function BookingPanel({ pickup, drop, estimate, onReset, onRequest }) {
       <div style={{ marginTop: 10 }} className="muted">
         Pickup: {pickup ? `${pickup.lat.toFixed(4)}, ${pickup.lng.toFixed(4)}` : "— not set —"}<br />
         Drop: {drop ? `${drop.lat.toFixed(4)}, ${drop.lng.toFixed(4)}` : "— not set —"}
+      </div>
+      {/* Round 7 stakeholder council: five vehicle types have existed in the schema
+          (and the seeded drivers) since the start of the night with no way for a
+          rider to ask for one -- every ride cost and matched identically regardless
+          of type. */}
+      <label style={{ marginTop: 14 }}>Ride type</label>
+      <div className="tab-row" style={{ flexWrap: "wrap" }}>
+        {VEHICLE_TYPES.map((vt) => (
+          <button
+            key={vt.value}
+            className={`tab-btn ${vehicleType === vt.value ? "active" : ""}`}
+            style={{ flex: "1 1 30%", whiteSpace: "nowrap" }}
+            onClick={() => setVehicleType(vt.value)}
+          >
+            {vt.label}
+          </button>
+        ))}
       </div>
       {pickup && drop && <button className="btn ghost" style={{ marginTop: 8 }} onClick={onReset}>Reset pins</button>}
       {estimate && (
@@ -288,7 +327,9 @@ function TripPanel({
           {liveConnected ? "● live" : "○ reconnecting…"}
         </span>
       )}
-      <div style={{ marginTop: 12 }} className="muted">Trip {trip.trip_id.slice(0, 8)}…</div>
+      <div style={{ marginTop: 12 }} className="muted">
+        Trip {trip.trip_id.slice(0, 8)}… · {VEHICLE_TYPES.find((v) => v.value === trip.vehicle_type_requested)?.label || trip.vehicle_type_requested}
+      </div>
       {trip.fare_final != null && (
         <div className="fare-line total"><span>Fare</span><span>₹{trip.fare_final.toFixed(2)}</span></div>
       )}

@@ -225,7 +225,7 @@ function TripDetail({ trip, audit, ledger, onBack, onForceCancel }) {
       <StatusPill status={trip.status} />
       <div className="muted" style={{ marginTop: 8 }}>
         Rider {trip.rider_id?.slice(0, 8)} · Driver {trip.driver_id ? trip.driver_id.slice(0, 8) : "—"}<br />
-        Dispatch attempts: {trip.dispatch_attempts}
+        Dispatch attempts: {trip.dispatch_attempts} · Vehicle type: {trip.vehicle_type_requested}
       </div>
 
       {cancellable && !confirming && (

@@ -47,6 +47,7 @@ class Dispatcher:
         radius_km: float,
         count: int,
         at: datetime,
+        vehicle_type: str = "SEDAN",
     ) -> DispatchResult:
         raw_candidates = await self._index.search_with_neighbors(
             city.city_id, city.neighbors, pickup_lat, pickup_lng, radius_km, count
@@ -55,7 +56,11 @@ class Dispatcher:
         if not raw_candidates:
             return DispatchResult(None, None, None, 0)
 
-        enrichment = await validate_and_enrich(session, [c.driver_id for c in raw_candidates])
+        # Round 7 stakeholder council: vehicle-type filtering happens here, at the
+        # same Postgres validation step as ONLINE/no-active-trip/kyc_verified --
+        # never in the Redis geo search, which stays a pure "who's physically near
+        # here" query independent of what any particular trip is asking for.
+        enrichment = await validate_and_enrich(session, [c.driver_id for c in raw_candidates], vehicle_type)
         candidate_infos = [
             DriverCandidateInfo(
                 driver_id=c.driver_id, lat=c.lat, lng=c.lng,

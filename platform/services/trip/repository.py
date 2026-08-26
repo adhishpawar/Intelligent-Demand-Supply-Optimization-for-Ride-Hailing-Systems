@@ -49,6 +49,7 @@ class TripRecord:
     matching_deadline_at: datetime | None
     cancellation_fee_applied: float
     requested_at: datetime
+    vehicle_type_requested: str
 
     def __post_init__(self) -> None:
         self.trip_id = str(self.trip_id)
@@ -75,7 +76,7 @@ class Increment:
 _COLUMNS = (
     "trip_id, rider_id, driver_id, city_id, status, version, pickup_lat, pickup_lng, drop_lat, drop_lng, "
     "fare_estimate, fare_final, surge_multiplier, dispatch_attempts, current_offer_driver_id, current_offer_id, "
-    "current_offer_expires_at, matching_deadline_at, cancellation_fee_applied, requested_at"
+    "current_offer_expires_at, matching_deadline_at, cancellation_fee_applied, requested_at, vehicle_type_requested"
 )
 
 
@@ -97,6 +98,7 @@ class TripRepository:
         fare_estimate: float,
         surge_multiplier: float,
         matching_deadline_seconds: int,
+        vehicle_type_requested: str = "SEDAN",
     ) -> TripRecord:
         row = (
             await self._session.execute(
@@ -105,11 +107,11 @@ class TripRepository:
                     INSERT INTO trips (
                         rider_id, city_id, pickup_lat, pickup_lng, pickup_geohash7,
                         drop_lat, drop_lng, drop_geohash7, status, fare_estimate,
-                        surge_multiplier, matching_deadline_at
+                        surge_multiplier, matching_deadline_at, vehicle_type_requested
                     ) VALUES (
                         :rider_id, :city_id, :pickup_lat, :pickup_lng, :pickup_geohash7,
                         :drop_lat, :drop_lng, :drop_geohash7, 'REQUESTED', :fare_estimate,
-                        :surge_multiplier, now() + make_interval(secs => :deadline_s)
+                        :surge_multiplier, now() + make_interval(secs => :deadline_s), :vehicle_type_requested
                     ) RETURNING {_COLUMNS}
                     """
                 ),
@@ -118,6 +120,7 @@ class TripRepository:
                     "pickup_geohash7": pickup_geohash7, "drop_lat": drop_lat, "drop_lng": drop_lng,
                     "drop_geohash7": drop_geohash7, "fare_estimate": fare_estimate,
                     "surge_multiplier": surge_multiplier, "deadline_s": matching_deadline_seconds,
+                    "vehicle_type_requested": vehicle_type_requested,
                 },
             )
         ).mappings().first()
