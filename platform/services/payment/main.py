@@ -48,7 +48,17 @@ async def lifespan(app: FastAPI):
         async with sessionmaker() as session:
             await container.get_payment_service().charge_trip(session, payload["trip_id"])
 
+    async def on_ride_cancelled(payload: dict) -> None:
+        # Round 9 stakeholder council: cancellation fees were calculated and shown
+        # to the rider but never actually posted to the ledger -- see
+        # PaymentService.charge_cancellation_fee's docstring.
+        if await dedup.seen_before(payload["event_id"]):
+            return
+        async with sessionmaker() as session:
+            await container.get_payment_service().charge_cancellation_fee(session, payload["trip_id"])
+
     await _consumer_bus.subscribe("ride.completed", "payment-service", on_ride_completed)
+    await _consumer_bus.subscribe("ride.cancelled", "payment-service", on_ride_cancelled)
 
     _retry_loop = RetryLoop(sessionmaker, container.get_payment_service())
     _retry_loop.start()
