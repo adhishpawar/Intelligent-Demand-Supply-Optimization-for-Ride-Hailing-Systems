@@ -83,3 +83,7 @@ class DriverProfileResponse(BaseModel):
 
 class KycUpdateRequest(BaseModel):
     verified: bool
+
+
+class ActiveUpdateRequest(BaseModel):
+    active: bool

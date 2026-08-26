@@ -371,6 +371,19 @@ function DriversPanel() {
     }
   }
 
+  // Round 6 stakeholder council (tech lead): `users.is_active` existed in the
+  // schema with no write path anywhere -- a platform with no way to suspend an
+  // abusive or fraudulent account isn't production-ready. Reuses the same toggle
+  // pattern as KYC verify/revoke right next to it.
+  async function toggleActive(driverId, current) {
+    try {
+      await api.patch(`/v1/admin/users/${driverId}/active`, { active: !current });
+      load();
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
   if (!drivers) return <div className="card"><div className="muted">Loading…</div></div>;
 
   return (
@@ -378,7 +391,7 @@ function DriversPanel() {
       <h3>Drivers ({drivers.length})</h3>
       <div style={{ maxHeight: 480, overflowY: "auto" }}>
         <table className="data-table">
-          <thead><tr><th>Name</th><th>City</th><th>Status</th><th>Rating</th><th>KYC</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>City</th><th>Status</th><th>Rating</th><th>KYC</th><th>Account</th><th></th><th></th></tr></thead>
           <tbody>
             {drivers.map((d) => (
               <tr key={d.driver_id}>
@@ -387,9 +400,15 @@ function DriversPanel() {
                 <td>{d.status}</td>
                 <td>★ {d.rating_avg.toFixed(1)}</td>
                 <td>{d.kyc_verified ? "✅" : "—"}</td>
+                <td>{d.is_active ? "Active" : <span style={{ color: "var(--bad)" }}>Suspended</span>}</td>
                 <td>
                   <button className="link" onClick={() => toggleKyc(d.driver_id, d.kyc_verified)}>
-                    {d.kyc_verified ? "Revoke" : "Verify"}
+                    {d.kyc_verified ? "Revoke KYC" : "Verify KYC"}
+                  </button>
+                </td>
+                <td>
+                  <button className="link" onClick={() => toggleActive(d.driver_id, d.is_active)}>
+                    {d.is_active ? "Suspend" : "Reactivate"}
                   </button>
                 </td>
               </tr>

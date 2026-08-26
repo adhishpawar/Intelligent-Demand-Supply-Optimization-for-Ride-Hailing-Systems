@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import random
 
-from libs.common.errors import ConflictError, NotFoundError, RateLimitedError, UnauthorizedError
+from libs.common.errors import ConflictError, ForbiddenError, NotFoundError, RateLimitedError, UnauthorizedError
 from libs.security.jwt_tokens import create_access_token, create_refresh_token, decode_token
 from libs.security.principal import Principal, Role
 from services.identity.repository import OtpRepository, UserRepository
@@ -100,6 +100,17 @@ class IdentityService:
         user = await self._users.get_by_phone(phone)
         if user is None:
             raise NotFoundError("no user registered with this phone number", phone=phone)
+        # Round 6 stakeholder council (tech lead): `is_active` gated at the two
+        # token-minting choke points (here and refresh() below) rather than on every
+        # authenticated request -- that keeps the RBAC hot path a stateless JWT
+        # decode (PLAN's whole reason for JWTs), at the cost of a suspended account's
+        # *already-issued* access token staying valid until its own 1-hour expiry.
+        # That's an acceptable, explicit bound, not an oversight -- and it's exactly
+        # the window the Round 5 token-refresh fix now closes automatically once the
+        # access token does expire, rather than the account being silently
+        # re-refreshable forever the way it would have been before that fix existed.
+        if not user.is_active:
+            raise ForbiddenError("this account has been deactivated")
 
         principal = Principal(user_id=user.user_id, role=Role(user.role), phone=user.phone)
         access = create_access_token(
@@ -114,6 +125,9 @@ class IdentityService:
         principal = decode_token(
             refresh_token, secret=self._jwt_secret, algorithm=self._jwt_algorithm, expected_type="refresh"
         )
+        user = await self._users.get_by_id(principal.user_id)
+        if user is None or not user.is_active:
+            raise ForbiddenError("this account has been deactivated")
         access = create_access_token(
             principal, secret=self._jwt_secret, algorithm=self._jwt_algorithm, ttl_seconds=self._access_ttl
         )
@@ -121,6 +135,9 @@ class IdentityService:
             principal, secret=self._jwt_secret, algorithm=self._jwt_algorithm, ttl_seconds=self._refresh_ttl
         )
         return principal, access, new_refresh
+
+    async def set_active(self, user_id: str, active: bool) -> None:
+        await self._users.set_active(user_id, active)
 
     async def get_profile(self, user_id: str):
         user = await self._users.get_by_id(user_id)

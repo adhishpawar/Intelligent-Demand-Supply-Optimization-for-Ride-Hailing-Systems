@@ -46,6 +46,7 @@ def build_routes() -> list[RouteRule]:
         R("GET", C("/v1/drivers/{driver_id}/public"), "identity", ALL_AUTH),
         R("GET", C("/v1/drivers/{driver_id}"), "identity", ALL_AUTH),
         R("PATCH", C("/v1/drivers/{driver_id}/kyc"), "identity", frozenset({Role.ADMIN})),
+        R("PATCH", C("/v1/admin/users/{user_id}/active"), "identity", frozenset({Role.ADMIN})),
         R("GET", C("/v1/admin/drivers"), "identity", frozenset({Role.ADMIN})),
         # --- Location ---
         R("PATCH", C("/v1/drivers/{driver_id}/status"), "location", frozenset({Role.DRIVER, Role.ADMIN})),
