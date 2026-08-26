@@ -7,6 +7,11 @@ from libs.common.errors import ConflictError
 from libs.common.ids import utcnow
 from libs.geo.cities import CITIES, city_for
 from libs.geo.city_config_repo import get_rate_card, get_rate_card_dict, update_rate_card
+from libs.pricing.vehicle_type_repo import (
+    get_vehicle_type_multiplier,
+    get_vehicle_type_multipliers_dict,
+    update_vehicle_type_multiplier,
+)
 from libs.geo.eta import FastEtaEstimator
 from libs.geo.geohash import encode as geohash_encode
 from libs.pricing.fare import estimate_fare
@@ -14,7 +19,15 @@ from libs.pricing.surge_reader import read_surge_multiplier, surge_key
 from libs.security.principal import Principal, Role
 from libs.security.rbac import get_principal, require_roles
 from services.pricing.container import get_redis, get_session
-from services.pricing.schemas import CityConfigResponse, CityConfigUpdateRequest, EstimateRequest, EstimateResponse, SurgeResponse
+from services.pricing.schemas import (
+    CityConfigResponse,
+    CityConfigUpdateRequest,
+    EstimateRequest,
+    EstimateResponse,
+    SurgeResponse,
+    VehicleTypeMultiplierUpdateRequest,
+    VehicleTypeMultipliersResponse,
+)
 
 router = APIRouter()
 
@@ -36,7 +49,8 @@ async def estimate(
     # Round 1 stakeholder council: the rate card is DB-backed and admin-editable
     # (city_configs), not the hardcoded libs.geo.cities default.
     rate_card = await get_rate_card(session, city.city_id)
-    fare = estimate_fare(rate_card, distance_m, duration_s, surge, body.vehicle_type)
+    vt_multiplier = await get_vehicle_type_multiplier(session, body.vehicle_type)
+    fare = estimate_fare(rate_card, distance_m, duration_s, surge, vt_multiplier)
 
     # eta_pickup: how long until a driver could reach the pickup point -- a rough
     # city-average estimate tonight (a real pickup ETA needs the nearest candidate's
@@ -88,3 +102,22 @@ async def update_city_config(
         raise ConflictError("unknown city_id", city_id=city_id)
     updated = await update_rate_card(session, city_id, body.model_dump(exclude_none=True), principal.user_id)
     return CityConfigResponse(city_id=city_id, **updated)
+
+
+# --- Round 8 stakeholder council: closes Round 7's "REAL-LITE, hardcoded" note on
+# vehicle-type fare multipliers -- same DB-backed/admin-editable/audited pattern as
+# the city rate card immediately above. ---
+
+@router.get("/v1/pricing/vehicle-multipliers", response_model=VehicleTypeMultipliersResponse)
+async def get_vehicle_multipliers(_principal: Principal = Depends(get_principal), session=Depends(get_session)):
+    return VehicleTypeMultipliersResponse(multipliers=await get_vehicle_type_multipliers_dict(session))
+
+
+@router.patch("/v1/pricing/vehicle-multipliers", response_model=VehicleTypeMultipliersResponse)
+async def update_vehicle_multiplier(
+    body: VehicleTypeMultiplierUpdateRequest,
+    principal: Principal = Depends(require_roles(Role.ADMIN)),
+    session=Depends(get_session),
+):
+    await update_vehicle_type_multiplier(session, body.vehicle_type, body.multiplier, principal.user_id)
+    return VehicleTypeMultipliersResponse(multipliers=await get_vehicle_type_multipliers_dict(session))

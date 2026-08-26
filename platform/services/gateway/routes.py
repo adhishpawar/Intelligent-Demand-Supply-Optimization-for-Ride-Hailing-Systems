@@ -71,6 +71,8 @@ def build_routes() -> list[RouteRule]:
         R("GET", C("/v1/pricing/surge/{city_id}"), "pricing", ALL_AUTH),
         R("GET", C("/v1/pricing/config/{city_id}"), "pricing", ALL_AUTH),
         R("PATCH", C("/v1/pricing/config/{city_id}"), "pricing", frozenset({Role.ADMIN})),
+        R("GET", C("/v1/pricing/vehicle-multipliers"), "pricing", ALL_AUTH),
+        R("PATCH", C("/v1/pricing/vehicle-multipliers"), "pricing", frozenset({Role.ADMIN})),
         # --- Payment ---
         R("POST", C("/v1/payments/{trip_id}/charge"), "payment", frozenset({Role.ADMIN})),
         R("GET", C("/v1/payments/analytics/summary"), "payment", frozenset({Role.ADMIN})),  # must precede {trip_id} below
