@@ -15,6 +15,7 @@ from libs.security.principal import Principal, Role
 from libs.security.rbac import get_principal, require_roles
 from services.identity.container import get_identity_service
 from services.identity.schemas import (
+    ActiveUpdateRequest,
     DriverProfileResponse,
     DriverPublicInfoResponse,
     KycUpdateRequest,
@@ -132,6 +133,22 @@ async def update_kyc(
     await svc.set_kyc(driver_id, body.verified)
     profile = await svc.get_driver_profile(driver_id)
     return DriverProfileResponse(**profile.__dict__)
+
+
+@router.patch("/v1/admin/users/{user_id}/active")
+async def update_active(
+    user_id: str,
+    body: ActiveUpdateRequest,
+    # Round 6 stakeholder council (tech lead): general over any user, not
+    # driver-specific -- a rider is just as much a real suspension case as a driver,
+    # and `is_active` lives on `users`, not `driver_profiles`. Not exposed through
+    # the admin drivers-panel UI for riders yet (no rider-management screen exists
+    # today), but the capability itself is correct and complete now regardless.
+    principal: Principal = Depends(require_roles(Role.ADMIN)),  # Layer 2: admin-only, re-checked here
+    svc: IdentityService = Depends(get_identity_service),
+):
+    await svc.set_active(user_id, body.active)
+    return {"user_id": user_id, "is_active": body.active}
 
 
 @router.post("/v1/drivers/{driver_id}/complete-ride", status_code=204)

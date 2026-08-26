@@ -79,6 +79,7 @@ class UserRepository(Protocol):
     async def list_all_drivers(self) -> list[dict]: ...
     async def set_kyc_verified(self, driver_id: str, verified: bool) -> None: ...
     async def increment_rides_completed(self, driver_id: str) -> None: ...
+    async def set_active(self, user_id: str, active: bool) -> None: ...
 
 
 class PgUserRepository:
@@ -187,7 +188,7 @@ class PgUserRepository:
             await self._session.execute(
                 text(
                     """
-                    SELECT u.user_id AS driver_id, u.name, u.phone, u.rating_avg,
+                    SELECT u.user_id AS driver_id, u.name, u.phone, u.rating_avg, u.is_active,
                            dp.city_id, dp.status, dp.kyc_verified, dp.acceptance_rate, dp.rides_completed
                     FROM users u
                     JOIN driver_profiles dp ON dp.driver_id = u.user_id
@@ -224,6 +225,23 @@ class PgUserRepository:
         )
         if result.rowcount == 0:
             raise NotFoundError("driver profile not found", driver_id=driver_id)
+
+    async def set_active(self, user_id: str, active: bool) -> None:
+        """Round 6 stakeholder council (tech lead): `users.is_active` existed in the
+        schema (default TRUE) and was already read into every `UserRecord`, but
+        nothing anywhere -- not even an admin endpoint -- ever wrote it. Unlike the
+        Round 5 KYC finding (a real toggle whose effect was silently never checked),
+        this had no write path at all: less dangerous (nobody could be fooled into
+        thinking suspension worked), but still a real, missing ops capability -- a
+        platform with no way to suspend an abusive or fraudulent account is not
+        production-ready regardless of role. General over `users`, not
+        driver-specific: a rider can be just as much a suspension case as a driver."""
+        result = await self._session.execute(
+            text("UPDATE users SET is_active = :active WHERE user_id = :id"),
+            {"active": active, "id": user_id},
+        )
+        if result.rowcount == 0:
+            raise NotFoundError("user not found", user_id=user_id)
 
 
 class OtpRepository:
