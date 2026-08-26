@@ -275,6 +275,30 @@ class TripRepository:
         ).mappings().first()
         return TripRecord(**dict(row)) if row else None
 
+    async def find_active_for_rider(self, rider_id: str) -> TripRecord | None:
+        """Round 3 stakeholder council (tech lead): the driver side has always had
+        `ux_trips_one_active_per_driver` (a partial unique index) plus a three-layer
+        claim preventing two active trips on one driver -- the rider side had no
+        equivalent at all. A rider could call POST /v1/trips repeatedly (a double-
+        click, a buggy retry, or deliberate abuse) and pile up multiple concurrent
+        MATCHING trips, each independently consuming a dispatch cycle and candidate
+        drivers, while the frontend -- which tracks exactly one `tripId` in
+        sessionStorage -- would silently orphan every trip after the first. This is
+        the application-level check; `ux_trips_one_active_per_rider` (V003 migration)
+        is the DB-level backstop, same "never trust a single layer" principle as the
+        driver claim."""
+        row = (
+            await self._session.execute(
+                text(
+                    f"SELECT {_COLUMNS} FROM trips WHERE rider_id = :rider_id AND status IN "
+                    "('REQUESTED', 'MATCHING', 'DRIVER_ASSIGNED', 'DRIVER_ARRIVING', 'DRIVER_ARRIVED', 'IN_PROGRESS') "
+                    "LIMIT 1"
+                ),
+                {"rider_id": rider_id},
+            )
+        ).mappings().first()
+        return TripRecord(**dict(row)) if row else None
+
     async def list_for_rider(self, rider_id: str, limit: int = 50) -> list[TripRecord]:
         """Round 1 stakeholder council, rider pain #2: "no trip history anywhere."
         A rider's own past trips, not the admin's all-trips feed."""

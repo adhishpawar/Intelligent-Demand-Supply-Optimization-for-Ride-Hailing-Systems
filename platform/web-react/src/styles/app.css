@@ -119,6 +119,33 @@ button.btn.ghost { background: transparent; border: 1px solid var(--border); col
   margin-top: 12px; padding: 12px; background: rgba(239,68,68,0.08); border: 1px solid var(--bad);
   border-radius: 10px; font-size: 0.9rem;
 }
+.notif-bell-root { position: relative; }
+.notif-bell-btn {
+  background: none; border: none; cursor: pointer; font-size: 1.1rem; color: var(--text-dim);
+  position: relative; padding: 4px 6px; line-height: 1;
+}
+.notif-bell-btn:hover { color: var(--text); }
+.notif-badge {
+  position: absolute; top: -2px; right: -2px; background: var(--bad); color: white;
+  font-size: 0.62rem; font-weight: 700; min-width: 16px; height: 16px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center; padding: 0 3px;
+}
+.notif-dropdown {
+  position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-height: 400px;
+  overflow-y: auto; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); z-index: 2500;
+}
+.notif-dropdown-header {
+  padding: 10px 14px; font-weight: 600; font-size: 0.85rem; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--surface);
+}
+.notif-item { padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.notif-item:last-child { border-bottom: none; }
+.notif-item:hover { background: var(--surface-2); }
+.notif-item.unread { background: rgba(79,140,255,0.06); }
+.notif-item.unread .notif-item-title::before { content: "● "; color: var(--accent); }
+.notif-item-title { font-weight: 600; font-size: 0.85rem; }
+.notif-item-body { color: var(--text-dim); font-size: 0.8rem; margin-top: 2px; }
 .role-badge.rider { color: var(--accent); }
 .role-badge.driver { color: var(--good); }
 .role-badge.admin { color: var(--accent-2); }

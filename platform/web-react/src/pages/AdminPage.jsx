@@ -31,6 +31,7 @@ export default function AdminPage() {
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [audit, setAudit] = useState([]);
   const [ledger, setLedger] = useState(null);
+  const [revenue, setRevenue] = useState(null); // {commission_total, gross_fares_total, paid_trip_count}
 
   const refreshHeatmap = useCallback(async () => {
     try {
@@ -48,12 +49,24 @@ export default function AdminPage() {
     }
   }, [toast]);
 
+  // Round 3 stakeholder council (admin/tech-lead pain): the ledger was always real
+  // and balanced per-trip, but there was no "how is the platform doing today"
+  // rollup anywhere -- only the one-trip-at-a-time ledger view.
+  const refreshRevenue = useCallback(async () => {
+    try {
+      setRevenue(await api.get("/v1/payments/analytics/summary"));
+    } catch (e) {
+      /* transient */
+    }
+  }, []);
+
   useEffect(() => {
     refreshHeatmap();
     refreshTrips();
-    const id = setInterval(() => { refreshHeatmap(); refreshTrips(); }, 3000);
+    refreshRevenue();
+    const id = setInterval(() => { refreshHeatmap(); refreshTrips(); refreshRevenue(); }, 3000);
     return () => clearInterval(id);
-  }, [refreshHeatmap, refreshTrips]);
+  }, [refreshHeatmap, refreshTrips, refreshRevenue]);
 
   // Render driver dots on the map, diffed against the previous frame.
   useEffect(() => {
@@ -128,6 +141,13 @@ export default function AdminPage() {
             <div className="stat-tile"><div className="value">{heatmap.online_count}</div><div className="label">Drivers online ({cityId})</div></div>
             <div className="stat-tile"><div className="value">{activeTrips}</div><div className="label">Active trips</div></div>
             <div className="stat-tile"><div className="value">{trips.length}</div><div className="label">Recent trips (feed)</div></div>
+            {revenue && (
+              <>
+                <div className="stat-tile"><div className="value">₹{revenue.commission_total.toFixed(2)}</div><div className="label">Commission today</div></div>
+                <div className="stat-tile"><div className="value">₹{revenue.gross_fares_total.toFixed(2)}</div><div className="label">Gross fares today</div></div>
+                <div className="stat-tile"><div className="value">{revenue.paid_trip_count}</div><div className="label">Paid trips today</div></div>
+              </>
+            )}
           </div>
 
           <div className="tab-row">

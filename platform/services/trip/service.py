@@ -53,6 +53,18 @@ class TripService:
 
         async with self._uow_factory() as uow:
             repo = TripRepository(uow.session)
+            # Round 3 stakeholder council (tech lead): a rider could otherwise call
+            # this repeatedly (double-click, buggy retry, deliberate abuse) and pile
+            # up multiple concurrent live trips -- see
+            # TripRepository.find_active_for_rider's docstring. Checked inside the
+            # same transaction as the insert below; ux_trips_one_active_per_rider
+            # (V003) is the DB-level backstop if this check and a concurrent request
+            # somehow race.
+            existing = await repo.find_active_for_rider(rider_id)
+            if existing is not None:
+                raise ConflictError(
+                    "you already have an active ride in progress", trip_id=existing.trip_id, status=existing.status,
+                )
             # Round 1 stakeholder council: the rate card is now DB-backed and
             # admin-editable (city_configs), not a hardcoded Python constant --
             # read live, inside the same transaction, rather than the in-memory

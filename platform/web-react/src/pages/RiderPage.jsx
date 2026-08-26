@@ -6,6 +6,7 @@ import { api, ApiError, loadSession, wsUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useReconnectingSocket } from "../hooks/useReconnectingSocket";
+import NotificationBell from "../components/NotificationBell";
 
 const TERMINAL_STATUSES = new Set([
   "NO_DRIVER_FOUND", "EXPIRED", "CANCELLED_BY_RIDER", "CANCELLED_BY_DRIVER", "CANCELLED_BY_SYSTEM", "RATED",
@@ -206,6 +207,7 @@ export default function RiderPage() {
         <div className="brand"><span className="dot" /> Glovatrix <span className="role-badge rider">Rider</span></div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <button className="link" onClick={() => setShowHistory(true)}>My rides</button>
+          <NotificationBell />
           <span className="muted">{userId?.slice(0, 8)}</span>
           <button className="link" onClick={logout}>Sign out</button>
         </div>
