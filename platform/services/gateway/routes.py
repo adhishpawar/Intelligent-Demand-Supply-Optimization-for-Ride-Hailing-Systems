@@ -43,8 +43,10 @@ def build_routes() -> list[RouteRule]:
         # --- Identity: authenticated ---
         R("GET", C("/v1/users/me"), "identity", ALL_AUTH),
         R("GET", C("/v1/users/{user_id}"), "identity", ALL_AUTH),
+        R("GET", C("/v1/drivers/{driver_id}/public"), "identity", ALL_AUTH),
         R("GET", C("/v1/drivers/{driver_id}"), "identity", ALL_AUTH),
         R("PATCH", C("/v1/drivers/{driver_id}/kyc"), "identity", frozenset({Role.ADMIN})),
+        R("GET", C("/v1/admin/drivers"), "identity", frozenset({Role.ADMIN})),
         # --- Location ---
         R("PATCH", C("/v1/drivers/{driver_id}/status"), "location", frozenset({Role.DRIVER, Role.ADMIN})),
         R("PATCH", C("/v1/drivers/{driver_id}/location"), "location", frozenset({Role.DRIVER, Role.ADMIN})),
@@ -53,6 +55,7 @@ def build_routes() -> list[RouteRule]:
         # --- Trip ---
         R("POST", C("/v1/trips"), "trip", frozenset({Role.RIDER})),
         R("GET", C("/v1/trips"), "trip", frozenset({Role.ADMIN})),
+        R("GET", C("/v1/trips/mine"), "trip", frozenset({Role.RIDER})),  # must precede {trip_id} -- "mine" would otherwise match it
         R("GET", C("/v1/trips/{trip_id}"), "trip", ALL_AUTH),
         R("GET", C("/v1/trips/{trip_id}/audit"), "trip", ALL_AUTH),
         R("POST", C("/v1/trips/{trip_id}/respond"), "trip", frozenset({Role.DRIVER})),
@@ -65,6 +68,8 @@ def build_routes() -> list[RouteRule]:
         # --- Pricing ---
         R("POST", C("/v1/pricing/estimate"), "pricing", ALL_AUTH),
         R("GET", C("/v1/pricing/surge/{city_id}"), "pricing", ALL_AUTH),
+        R("GET", C("/v1/pricing/config/{city_id}"), "pricing", ALL_AUTH),
+        R("PATCH", C("/v1/pricing/config/{city_id}"), "pricing", frozenset({Role.ADMIN})),
         # --- Payment ---
         R("POST", C("/v1/payments/{trip_id}/charge"), "payment", frozenset({Role.ADMIN})),
         R("GET", C("/v1/payments/{trip_id}"), "payment", ALL_AUTH),

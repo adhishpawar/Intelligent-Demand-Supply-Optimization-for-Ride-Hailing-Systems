@@ -31,6 +31,9 @@ export default function RiderPage() {
   const [trip, setTrip] = useState(null);
   const [stars, setStars] = useState(0);
   const [comment, setComment] = useState("");
+  const [driverInfo, setDriverInfo] = useState(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const fetchEstimate = useCallback(async (p, d) => {
     if (!p || !d) return setEstimate(null);
@@ -97,6 +100,7 @@ export default function RiderPage() {
     setTrip(null);
     setStars(0);
     setComment("");
+    setShowCancelConfirm(false);
     if (driverMarkerRef.current) { mapRef.current.removeLayer(driverMarkerRef.current); driverMarkerRef.current = null; }
     resetPins();
   }
@@ -132,6 +136,21 @@ export default function RiderPage() {
     return () => clearInterval(pollTimerRef.current);
   }, [tripId, pollTrip]);
 
+  // Round 1 stakeholder council, rider pain #1: fetch the driver's public info
+  // (name/rating/vehicle) the instant a driver is assigned — the single most
+  // reassuring screen in any ride-hailing app was missing entirely before this.
+  useEffect(() => {
+    if (!trip?.driver_id) {
+      setDriverInfo(null);
+      return;
+    }
+    let cancelled = false;
+    api.get(`/v1/drivers/${trip.driver_id}/public`).then((info) => {
+      if (!cancelled) setDriverInfo(info);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [trip?.driver_id]);
+
   // Live position push, over a self-reconnecting socket (PLAN §5.1 never-cut tier:
   // "WebSocket reconnect/backfill"). `onOpen` re-polls immediately on every
   // (re)connect — the equivalent of the driver-side offer catch-up, applied here to
@@ -158,10 +177,12 @@ export default function RiderPage() {
       <div className="topbar">
         <div className="brand"><span className="dot" /> Glovatrix <span className="role-badge rider">Rider</span></div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <button className="link" onClick={() => setShowHistory(true)}>My rides</button>
           <span className="muted">{userId?.slice(0, 8)}</span>
           <button className="link" onClick={logout}>Sign out</button>
         </div>
       </div>
+      {showHistory && <RideHistoryModal onClose={() => setShowHistory(false)} />}
       <div className="main">
         <MapView onReady={(m) => (mapRef.current = m)} onClick={handleMapClick} />
         <div className="panel">
@@ -174,7 +195,8 @@ export default function RiderPage() {
             <TripPanel
               trip={trip} status={status} onCancel={cancelTrip} onBookAnother={bookAnotherRide}
               stars={stars} setStars={setStars} comment={comment} setComment={setComment}
-              onSubmitRating={submitRating} liveConnected={trackerConnected}
+              onSubmitRating={submitRating} liveConnected={trackerConnected} driverInfo={driverInfo}
+              showCancelConfirm={showCancelConfirm} setShowCancelConfirm={setShowCancelConfirm}
             />
           )}
         </div>
@@ -206,10 +228,14 @@ function BookingPanel({ pickup, drop, estimate, onReset, onRequest }) {
   );
 }
 
-function TripPanel({ trip, status, onCancel, onBookAnother, stars, setStars, comment, setComment, onSubmitRating, liveConnected }) {
+function TripPanel({
+  trip, status, onCancel, onBookAnother, stars, setStars, comment, setComment, onSubmitRating, liveConnected,
+  driverInfo, showCancelConfirm, setShowCancelConfirm,
+}) {
   if (!trip) return <div className="card"><div className="muted">Loading trip…</div></div>;
 
   const showLiveIndicator = ["DRIVER_ASSIGNED", "DRIVER_ARRIVING", "DRIVER_ARRIVED", "IN_PROGRESS"].includes(status);
+  const driverAssigned = !!trip.driver_id;
 
   return (
     <div className="card">
@@ -224,20 +250,40 @@ function TripPanel({ trip, status, onCancel, onBookAnother, stars, setStars, com
         <div className="fare-line total"><span>Fare</span><span>₹{trip.fare_final.toFixed(2)}</span></div>
       )}
 
+      {/* Round 1 stakeholder council, rider pain #1: "here is who is coming for
+          you" -- the single most reassuring screen in any ride-hailing app. */}
+      {driverAssigned && driverInfo && ACTIVE_STATUSES.has(status) && (
+        <div className="driver-card">
+          <div className="driver-card-name">{driverInfo.name} <span className="muted">★ {driverInfo.rating_avg.toFixed(1)}</span></div>
+          {driverInfo.vehicle_make && (
+            <div className="muted">{driverInfo.vehicle_make} {driverInfo.vehicle_model} · {driverInfo.vehicle_plate}</div>
+          )}
+        </div>
+      )}
+
       {status === "MATCHING" && (
         <>
           <div className="muted" style={{ marginTop: 10 }}>
             Checking nearby drivers — attempt {(trip.dispatch_attempts || 0) + 1} of 3.
             This never spins forever: if no driver is found, you'll see that clearly.
           </div>
-          <button className="btn danger" onClick={onCancel}>Cancel request</button>
+          <button className="btn danger" onClick={() => setShowCancelConfirm(true)}>Cancel request</button>
         </>
       )}
       {ACTIVE_STATUSES.has(status) && (
         <>
-          <div className="muted" style={{ marginTop: 10 }}>Your driver is on it. Watch the map for live position.</div>
-          {status !== "IN_PROGRESS" && <button className="btn danger" onClick={onCancel}>Cancel ride</button>}
+          <div className="muted" style={{ marginTop: 10 }}>Watch the map for live position.</div>
+          {status !== "IN_PROGRESS" && <button className="btn danger" onClick={() => setShowCancelConfirm(true)}>Cancel ride</button>}
         </>
+      )}
+      {showCancelConfirm && (
+        <div className="confirm-inline">
+          <div>Cancel this ride?{driverAssigned ? " A cancellation fee may apply since a driver is already on the way." : ""}</div>
+          <div className="row" style={{ marginTop: 10 }}>
+            <button className="btn ghost" onClick={() => setShowCancelConfirm(false)}>Keep ride</button>
+            <button className="btn danger" onClick={() => { setShowCancelConfirm(false); onCancel(); }}>Yes, cancel</button>
+          </div>
+        </div>
       )}
       {(status === "COMPLETED" || status === "PAID_PENDING") && (
         <div className="muted" style={{ marginTop: 10 }}>Finalizing your trip and payment…</div>
@@ -268,6 +314,45 @@ function TripPanel({ trip, status, onCancel, onBookAnother, stars, setStars, com
           <button className="btn primary" onClick={onBookAnother}>Book another ride</button>
         </>
       )}
+    </div>
+  );
+}
+
+// Round 1 stakeholder council, rider pain #2: "no trip history anywhere" -- a
+// genuinely expected feature in any ride-hailing app, entirely missing before this.
+function RideHistoryModal({ onClose }) {
+  const [trips, setTrips] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    api.get("/v1/trips/mine").then(setTrips).catch((e) => setError(e.message));
+  }, []);
+
+  return (
+    <div className="offer-modal" onClick={onClose}>
+      <div className="offer-card" style={{ width: 460, textAlign: "left" }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginTop: 0 }}>My rides</h3>
+        {error && <div className="muted">{error}</div>}
+        {!trips && !error && <div className="muted">Loading…</div>}
+        {trips && trips.length === 0 && <div className="muted">No rides yet — go request one!</div>}
+        {trips && trips.length > 0 && (
+          <div style={{ maxHeight: 420, overflowY: "auto" }}>
+            <table className="data-table">
+              <thead><tr><th>When</th><th>Status</th><th>Fare</th></tr></thead>
+              <tbody>
+                {trips.map((t) => (
+                  <tr key={t.trip_id}>
+                    <td>{new Date(t.requested_at).toLocaleString()}</td>
+                    <td><StatusPill status={t.status} /></td>
+                    <td>{t.fare_final != null ? `₹${t.fare_final.toFixed(2)}` : t.fare_estimate ? `~₹${t.fare_estimate.toFixed(2)}` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <button className="btn ghost" style={{ marginTop: 14 }} onClick={onClose}>Close</button>
+      </div>
     </div>
   );
 }

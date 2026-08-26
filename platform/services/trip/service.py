@@ -21,6 +21,7 @@ from libs.geo.cities import city_for, get_city
 from libs.geo.eta import FastEtaEstimator
 from libs.geo.geohash import encode as geohash_encode
 from libs.persistence.unit_of_work import UnitOfWork
+from libs.geo.city_config_repo import get_rate_card
 from libs.pricing.fare import estimate_fare
 from libs.pricing.surge_reader import read_surge_multiplier
 from libs.security.principal import Principal, Role
@@ -49,10 +50,15 @@ class TripService:
         duration_s = eta_estimator.eta_seconds(pickup[0], pickup[1], drop[0], drop[1], utcnow())
         pickup_geohash = geohash_encode(pickup[0], pickup[1])
         surge = await read_surge_multiplier(self._redis, city.city_id, pickup_geohash)
-        fare_estimate = estimate_fare(city.rate_card, distance_m, duration_s, surge)
 
         async with self._uow_factory() as uow:
             repo = TripRepository(uow.session)
+            # Round 1 stakeholder council: the rate card is now DB-backed and
+            # admin-editable (city_configs), not a hardcoded Python constant --
+            # read live, inside the same transaction, rather than the in-memory
+            # default.
+            rate_card = await get_rate_card(uow.session, city.city_id)
+            fare_estimate = estimate_fare(rate_card, distance_m, duration_s, surge)
             trip = await repo.create(
                 rider_id=rider_id, city_id=city.city_id,
                 pickup_lat=pickup[0], pickup_lng=pickup[1], pickup_geohash7=pickup_geohash,
@@ -129,10 +135,18 @@ class TripService:
                 return
 
         if result["driver_id"]:
+            # Round 1 stakeholder council, driver pain #1: the offer must carry
+            # enough for the driver to actually decide whether to take it --
+            # destination and expected fare, not just a countdown and an ETA number.
             await publish_driver_offer(
                 self._redis, result["driver_id"],
-                {"trip_id": trip_id, "offer_id": trip.current_offer_id, "expires_at": trip.current_offer_expires_at.isoformat(),
-                 "pickup_lat": trip.pickup_lat, "pickup_lng": trip.pickup_lng, "eta_seconds": result["eta_seconds"]},
+                {
+                    "trip_id": trip_id, "offer_id": trip.current_offer_id,
+                    "expires_at": trip.current_offer_expires_at.isoformat(),
+                    "pickup_lat": trip.pickup_lat, "pickup_lng": trip.pickup_lng,
+                    "drop_lat": trip.drop_lat, "drop_lng": trip.drop_lng,
+                    "fare_estimate": trip.fare_estimate, "eta_seconds": result["eta_seconds"],
+                },
             )
         await publish_trip_update(self._redis, trip_id, {"status": trip.status, "dispatch_attempts": trip.dispatch_attempts})
 
@@ -244,7 +258,8 @@ class TripService:
             eta_estimator = FastEtaEstimator(city.speed_profile)
             distance_m = eta_estimator.distance_m(trip.pickup_lat, trip.pickup_lng, trip.drop_lat, trip.drop_lng)
             duration_s = (utcnow() - (trip.requested_at)).total_seconds()
-            fare_final = estimate_fare(city.rate_card, distance_m, duration_s, trip.surge_multiplier)
+            rate_card = await get_rate_card(uow.session, trip.city_id)
+            fare_final = estimate_fare(rate_card, distance_m, duration_s, trip.surge_multiplier)
 
             trip = await repo.apply_transition(
                 trip.trip_id, Event.COMPLETE_TRIP, now=utcnow(), max_dispatch_attempts=self._settings.max_dispatch_attempts,
@@ -315,8 +330,8 @@ class TripService:
             trip = await repo.get(trip_id)
             repo.assert_ownership(trip, principal_id=principal.user_id, is_admin=principal.has_role(Role.ADMIN))
 
-            city = get_city(trip.city_id)
-            fee = city.rate_card.cancellation_fee if trip.driver_id else 0.0  # GAP AS-06: business-ambiguous, config-driven
+            rate_card = await get_rate_card(uow.session, trip.city_id)
+            fee = rate_card.cancellation_fee if trip.driver_id else 0.0  # GAP AS-06: business-ambiguous, now admin-configurable per city
 
             event = Event.RIDER_CANCEL if principal.role == Role.RIDER else Event.SYSTEM_CANCEL
             trip = await repo.apply_transition(
@@ -382,6 +397,11 @@ class TripService:
         async with self._uow_factory() as uow:
             repo = TripRepository(uow.session)
             return await repo.list_recent(limit)
+
+    async def list_for_rider(self, rider_id: str, limit: int = 50) -> list[TripRecord]:
+        async with self._uow_factory() as uow:
+            repo = TripRepository(uow.session)
+            return await repo.list_for_rider(rider_id, limit)
 
     async def audit_trail(self, trip_id: str, principal: Principal) -> list[dict]:
         async with self._uow_factory() as uow:

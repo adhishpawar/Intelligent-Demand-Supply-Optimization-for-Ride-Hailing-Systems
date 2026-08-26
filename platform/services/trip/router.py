@@ -48,8 +48,19 @@ async def get_current_offer(
             "trip_id": trip.trip_id, "offer_id": trip.current_offer_id,
             "expires_at": trip.current_offer_expires_at.isoformat(),
             "pickup_lat": trip.pickup_lat, "pickup_lng": trip.pickup_lng,
+            "drop_lat": trip.drop_lat, "drop_lng": trip.drop_lng,
+            "fare_estimate": trip.fare_estimate,
         }
     }
+
+
+@router.get("/v1/trips/mine", response_model=list[TripResponse])
+async def list_my_trips(
+    principal: Principal = Depends(require_roles(Role.RIDER)),
+    svc: TripService = Depends(get_trip_service),
+):
+    trips = await svc.list_for_rider(principal.user_id)
+    return [_to_response(t) for t in trips]
 
 
 @router.get("/v1/trips", response_model=list[TripResponse])

@@ -48,6 +48,25 @@ class DriverProfileRecord:
         self.acceptance_rate = float(self.acceptance_rate)
 
 
+@dataclass
+class DriverPublicInfo:
+    """What a rider is shown once matched — the single most reassuring screen in any
+    ride-hailing app ("here is who is coming for you"), identified as the #1 rider-
+    perspective gap in the Round 1 stakeholder council review."""
+
+    driver_id: str
+    name: str
+    rating_avg: float
+    vehicle_make: str | None
+    vehicle_model: str | None
+    vehicle_plate: str | None
+    vehicle_type: str | None
+
+    def __post_init__(self) -> None:
+        self.driver_id = str(self.driver_id)
+        self.rating_avg = float(self.rating_avg)
+
+
 class UserRepository(Protocol):
     async def create_user(self, *, role: Role, phone: str, name: str) -> UserRecord: ...
     async def get_by_phone(self, phone: str) -> UserRecord | None: ...
@@ -56,6 +75,8 @@ class UserRepository(Protocol):
     async def create_vehicle(self, driver_id: str, make: str, model: str, plate: str, vehicle_type: str) -> str: ...
     async def attach_vehicle(self, driver_id: str, vehicle_id: str) -> None: ...
     async def get_driver_profile(self, driver_id: str) -> DriverProfileRecord | None: ...
+    async def get_driver_public_info(self, driver_id: str) -> "DriverPublicInfo | None": ...
+    async def list_all_drivers(self) -> list[dict]: ...
     async def set_kyc_verified(self, driver_id: str, verified: bool) -> None: ...
 
 
@@ -129,6 +150,25 @@ class PgUserRepository:
             {"vid": vehicle_id, "did": driver_id},
         )
 
+    async def get_driver_public_info(self, driver_id: str) -> DriverPublicInfo | None:
+        row = (
+            await self._session.execute(
+                text(
+                    """
+                    SELECT u.user_id AS driver_id, u.name, u.rating_avg,
+                           v.make AS vehicle_make, v.model AS vehicle_model,
+                           v.plate_number AS vehicle_plate, v.vehicle_type
+                    FROM users u
+                    JOIN driver_profiles dp ON dp.driver_id = u.user_id
+                    LEFT JOIN vehicles v ON v.vehicle_id = dp.vehicle_id
+                    WHERE u.user_id = :id
+                    """
+                ),
+                {"id": driver_id},
+            )
+        ).mappings().first()
+        return DriverPublicInfo(**dict(row)) if row else None
+
     async def get_driver_profile(self, driver_id: str) -> DriverProfileRecord | None:
         row = (
             await self._session.execute(
@@ -140,6 +180,25 @@ class PgUserRepository:
             )
         ).mappings().first()
         return DriverProfileRecord(**dict(row)) if row else None
+
+    async def list_all_drivers(self) -> list[dict]:
+        rows = (
+            await self._session.execute(
+                text(
+                    """
+                    SELECT u.user_id AS driver_id, u.name, u.phone, u.rating_avg,
+                           dp.city_id, dp.status, dp.kyc_verified, dp.acceptance_rate, dp.rides_completed
+                    FROM users u
+                    JOIN driver_profiles dp ON dp.driver_id = u.user_id
+                    ORDER BY u.name
+                    """
+                )
+            )
+        ).mappings().all()
+        return [
+            {**dict(r), "driver_id": str(r["driver_id"]), "rating_avg": float(r["rating_avg"]), "acceptance_rate": float(r["acceptance_rate"])}
+            for r in rows
+        ]
 
     async def set_kyc_verified(self, driver_id: str, verified: bool) -> None:
         result = await self._session.execute(

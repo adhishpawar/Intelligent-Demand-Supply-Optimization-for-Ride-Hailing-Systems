@@ -113,6 +113,15 @@ class IdentityService:
             raise NotFoundError("user not found", user_id=user_id)
         return user
 
+    async def get_driver_public_info(self, driver_id: str):
+        info = await self._users.get_driver_public_info(driver_id)
+        if info is None:
+            raise NotFoundError("driver not found", driver_id=driver_id)
+        return info
+
+    async def list_all_drivers(self):
+        return await self._users.list_all_drivers()
+
     async def get_driver_profile(self, driver_id: str):
         profile = await self._users.get_driver_profile(driver_id)
         if profile is None:

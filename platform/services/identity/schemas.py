@@ -55,6 +55,22 @@ class UserProfileResponse(BaseModel):
     rating_avg: float
 
 
+class DriverPublicInfoResponse(BaseModel):
+    """Round 1 stakeholder council, rider pain #1: the "who is coming for me" screen.
+    Deliberately not the same shape as DriverProfileResponse -- this is what's safe
+    and useful to show a RIDER (name, rating, vehicle), not the driver's operational
+    internals (KYC status, acceptance rate) that DriverProfileResponse exposes to the
+    driver themselves/admin."""
+
+    driver_id: str
+    name: str
+    rating_avg: float
+    vehicle_make: str | None
+    vehicle_model: str | None
+    vehicle_plate: str | None
+    vehicle_type: str | None
+
+
 class DriverProfileResponse(BaseModel):
     driver_id: str
     vehicle_id: str | None

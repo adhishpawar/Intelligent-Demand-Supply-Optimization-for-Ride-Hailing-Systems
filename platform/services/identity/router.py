@@ -16,6 +16,7 @@ from libs.security.rbac import get_principal, require_roles
 from services.identity.container import get_identity_service
 from services.identity.schemas import (
     DriverProfileResponse,
+    DriverPublicInfoResponse,
     KycUpdateRequest,
     OtpRequestRequest,
     OtpRequestResponse,
@@ -89,6 +90,24 @@ async def get_user(
         raise ForbiddenError("cannot read another user's profile")
     user = await svc.get_profile(user_id)
     return UserProfileResponse(**user.__dict__)
+
+
+@router.get("/v1/admin/drivers")
+async def list_all_drivers(
+    _principal: Principal = Depends(require_roles(Role.ADMIN)),
+    svc: IdentityService = Depends(get_identity_service),
+):
+    return await svc.list_all_drivers()
+
+
+@router.get("/v1/drivers/{driver_id}/public", response_model=DriverPublicInfoResponse)
+async def get_driver_public_info(
+    driver_id: str,
+    _principal: Principal = Depends(get_principal),  # any authenticated user -- name/rating/vehicle is not sensitive
+    svc: IdentityService = Depends(get_identity_service),
+):
+    info = await svc.get_driver_public_info(driver_id)
+    return DriverPublicInfoResponse(**info.__dict__)
 
 
 @router.get("/v1/drivers/{driver_id}", response_model=DriverProfileResponse)
