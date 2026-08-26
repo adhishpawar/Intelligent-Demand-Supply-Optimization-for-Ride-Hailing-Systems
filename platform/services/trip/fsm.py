@@ -23,6 +23,17 @@ PLAN §6.2 adversarial review, finding B3):
    as "zero outgoing transitions" (which correctly excludes PAID) and separately
    asserts PAID's only edge is the RATE annotation - the exception is proven, not
    assumed.
+
+Round 4 stakeholder council (tech lead / admin pain, found while verifying Round 3):
+`SYSTEM_CANCEL` originally only had one edge, from IN_PROGRESS - meaning an admin
+calling the cancel endpoint (which always fires SYSTEM_CANCEL for a non-rider
+principal) could only ever succeed on a trip already IN_PROGRESS. Every earlier
+state - a stuck REQUESTED/MATCHING trip, or one already DRIVER_ASSIGNED/ARRIVING/
+ARRIVED - had no admin-cancel path at all, discovered when force-cancelling a real
+orphaned DRIVER_ASSIGNED trip during Round 3 verification hit IllegalTransitionError.
+SYSTEM_CANCEL now mirrors RIDER_CANCEL's full set of source states (everything before
+IN_PROGRESS's COMPLETE_TRIP) - an admin can force-cancel a trip in any state a rider
+could have cancelled it themselves, which is the correct scope for an ops override.
 """
 from __future__ import annotations
 
@@ -122,25 +133,30 @@ class Transition:
 TRANSITIONS: dict[tuple[State, Event], Transition] = {
     (State.REQUESTED, Event.START_MATCHING): Transition(State.MATCHING),
     (State.REQUESTED, Event.RIDER_CANCEL): Transition(State.CANCELLED_BY_RIDER),
+    (State.REQUESTED, Event.SYSTEM_CANCEL): Transition(State.CANCELLED_BY_SYSTEM),
 
     (State.MATCHING, Event.ACCEPT): Transition(State.DRIVER_ASSIGNED, _accept_guard),
     (State.MATCHING, Event.REDISPATCH): Transition(State.MATCHING, _attempts_remain),
     (State.MATCHING, Event.EXHAUST_DISPATCH): Transition(State.NO_DRIVER_FOUND, _attempts_exhausted),
     (State.MATCHING, Event.EXPIRE): Transition(State.EXPIRED),
     (State.MATCHING, Event.RIDER_CANCEL): Transition(State.CANCELLED_BY_RIDER),
+    (State.MATCHING, Event.SYSTEM_CANCEL): Transition(State.CANCELLED_BY_SYSTEM),
 
     (State.DRIVER_ASSIGNED, Event.START_NAVIGATION): Transition(State.DRIVER_ARRIVING),
     (State.DRIVER_ASSIGNED, Event.DRIVER_CANCEL): Transition(State.MATCHING, _attempts_remain),
     (State.DRIVER_ASSIGNED, Event.DRIVER_CANCEL_EXHAUSTED): Transition(State.CANCELLED_BY_DRIVER, _attempts_exhausted),
     (State.DRIVER_ASSIGNED, Event.RIDER_CANCEL): Transition(State.CANCELLED_BY_RIDER),
+    (State.DRIVER_ASSIGNED, Event.SYSTEM_CANCEL): Transition(State.CANCELLED_BY_SYSTEM),
 
     (State.DRIVER_ARRIVING, Event.CONFIRM_ARRIVAL): Transition(State.DRIVER_ARRIVED),
     (State.DRIVER_ARRIVING, Event.DRIVER_CANCEL): Transition(State.MATCHING, _attempts_remain),
     (State.DRIVER_ARRIVING, Event.DRIVER_CANCEL_EXHAUSTED): Transition(State.CANCELLED_BY_DRIVER, _attempts_exhausted),
     (State.DRIVER_ARRIVING, Event.RIDER_CANCEL): Transition(State.CANCELLED_BY_RIDER),
+    (State.DRIVER_ARRIVING, Event.SYSTEM_CANCEL): Transition(State.CANCELLED_BY_SYSTEM),
 
     (State.DRIVER_ARRIVED, Event.START_TRIP): Transition(State.IN_PROGRESS),
     (State.DRIVER_ARRIVED, Event.RIDER_CANCEL): Transition(State.CANCELLED_BY_RIDER),
+    (State.DRIVER_ARRIVED, Event.SYSTEM_CANCEL): Transition(State.CANCELLED_BY_SYSTEM),
 
     (State.IN_PROGRESS, Event.COMPLETE_TRIP): Transition(State.COMPLETED),
     (State.IN_PROGRESS, Event.SYSTEM_CANCEL): Transition(State.CANCELLED_BY_SYSTEM),

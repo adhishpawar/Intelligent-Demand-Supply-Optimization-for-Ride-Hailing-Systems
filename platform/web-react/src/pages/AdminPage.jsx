@@ -107,6 +107,23 @@ export default function AdminPage() {
     }
   }
 
+  // Round 4 stakeholder council (admin/tech-lead pain, found while verifying Round
+  // 3): the admin console could view any trip but never actually intervene on a
+  // stuck one -- there was no cancel action anywhere in this UI, and the backend's
+  // SYSTEM_CANCEL event only had one legal source state (IN_PROGRESS) until this
+  // round's fsm.py fix. Force-cancel is now available from the trip detail view for
+  // any non-terminal trip.
+  async function forceCancelTrip(trip) {
+    try {
+      const updated = await api.post(`/v1/trips/${trip.trip_id}/cancel`, { reason: "admin force-cancel" });
+      setSelectedTrip(updated);
+      refreshTrips();
+      toast("Trip cancelled.");
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
   const activeTrips = trips.filter((t) => !TERMINAL_STATUSES.includes(t.status)).length;
 
   // Round 2 stakeholder council, admin/tech-lead pain: the trip feed was an
@@ -158,7 +175,7 @@ export default function AdminPage() {
 
           {view === "trips" && (
             selectedTrip ? (
-              <TripDetail trip={selectedTrip} audit={audit} ledger={ledger} onBack={() => setSelectedTrip(null)} />
+              <TripDetail trip={selectedTrip} audit={audit} ledger={ledger} onBack={() => setSelectedTrip(null)} onForceCancel={forceCancelTrip} />
             ) : (
               <div className="card">
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -197,7 +214,10 @@ export default function AdminPage() {
   );
 }
 
-function TripDetail({ trip, audit, ledger, onBack }) {
+function TripDetail({ trip, audit, ledger, onBack, onForceCancel }) {
+  const [confirming, setConfirming] = useState(false);
+  const cancellable = !TERMINAL_STATUSES.includes(trip.status);
+
   return (
     <div className="card">
       <button className="link" onClick={onBack}>&larr; Back to feed</button>
@@ -207,6 +227,19 @@ function TripDetail({ trip, audit, ledger, onBack }) {
         Rider {trip.rider_id?.slice(0, 8)} · Driver {trip.driver_id ? trip.driver_id.slice(0, 8) : "—"}<br />
         Dispatch attempts: {trip.dispatch_attempts}
       </div>
+
+      {cancellable && !confirming && (
+        <button className="btn danger" style={{ marginTop: 12 }} onClick={() => setConfirming(true)}>Force cancel</button>
+      )}
+      {confirming && (
+        <div className="confirm-inline">
+          <div>Force-cancel this trip? This overrides the rider and driver -- use for a stuck or problem trip only.</div>
+          <div className="row" style={{ marginTop: 10 }}>
+            <button className="btn ghost" onClick={() => setConfirming(false)}>Keep trip</button>
+            <button className="btn danger" onClick={() => { setConfirming(false); onForceCancel(trip); }}>Force cancel</button>
+          </div>
+        </div>
+      )}
 
       <h3 style={{ marginTop: 16 }}>Audit trail</h3>
       <table className="data-table">

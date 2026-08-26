@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useReconnectingSocket } from "../hooks/useReconnectingSocket";
 import NotificationBell from "../components/NotificationBell";
+import { haversineKm } from "../utils/geo";
 
 const TERMINAL_STATUSES = new Set([
   "NO_DRIVER_FOUND", "EXPIRED", "CANCELLED_BY_RIDER", "CANCELLED_BY_DRIVER", "CANCELLED_BY_SYSTEM", "RATED",
@@ -34,6 +35,7 @@ export default function RiderPage() {
   const [stars, setStars] = useState(0);
   const [comment, setComment] = useState("");
   const [driverInfo, setDriverInfo] = useState(null);
+  const [driverDistanceKm, setDriverDistanceKm] = useState(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -166,6 +168,15 @@ export default function RiderPage() {
         const latlng = [data.lat, data.lng];
         if (driverMarkerRef.current) driverMarkerRef.current.setLatLng(latlng);
         else if (mapRef.current) driverMarkerRef.current = L.marker(latlng, { title: "Driver" }).addTo(mapRef.current);
+        // Round 4 stakeholder council, rider pain: once a driver was assigned, the
+        // only feedback was "watch the map" -- no numeric sense of how far away,
+        // unlike the ETA every real ride-hailing app shows. The driver's live
+        // position was already streaming in via this same message; this was purely
+        // an unused-data gap, not a missing capability.
+        if (trip) {
+          const target = trip.status === "IN_PROGRESS" ? [trip.drop_lat, trip.drop_lng] : [trip.pickup_lat, trip.pickup_lng];
+          setDriverDistanceKm(haversineKm(data.lat, data.lng, target[0], target[1]));
+        }
       } else if (data.status) {
         pollTrip();
       }
@@ -182,6 +193,7 @@ export default function RiderPage() {
   // an in-flight trip doesn't retroactively announce the status it loads at.
   useEffect(() => {
     prevStatusRef.current = null;
+    setDriverDistanceKm(null);
   }, [tripId]);
 
   useEffect(() => {
@@ -227,6 +239,7 @@ export default function RiderPage() {
               stars={stars} setStars={setStars} comment={comment} setComment={setComment}
               onSubmitRating={submitRating} liveConnected={trackerConnected} driverInfo={driverInfo}
               showCancelConfirm={showCancelConfirm} setShowCancelConfirm={setShowCancelConfirm}
+              driverDistanceKm={driverDistanceKm}
             />
           )}
         </div>
@@ -260,7 +273,7 @@ function BookingPanel({ pickup, drop, estimate, onReset, onRequest }) {
 
 function TripPanel({
   trip, status, onCancel, onBookAnother, stars, setStars, comment, setComment, onSubmitRating, liveConnected,
-  driverInfo, showCancelConfirm, setShowCancelConfirm,
+  driverInfo, showCancelConfirm, setShowCancelConfirm, driverDistanceKm,
 }) {
   if (!trip) return <div className="card"><div className="muted">Loading trip…</div></div>;
 
@@ -287,6 +300,15 @@ function TripPanel({
           <div className="driver-card-name">{driverInfo.name} <span className="muted">★ {driverInfo.rating_avg.toFixed(1)}</span></div>
           {driverInfo.vehicle_make && (
             <div className="muted">{driverInfo.vehicle_make} {driverInfo.vehicle_model} · {driverInfo.vehicle_plate}</div>
+          )}
+          {/* Round 4 stakeholder council, rider pain #2: "watch the map" was the only
+              feedback on how far away the driver actually was -- no numeric ETA/
+              distance, unlike every real ride-hailing app. Computed client-side from
+              the same DRIVER_POSITION stream the map marker already consumes. */}
+          {driverDistanceKm != null && (
+            <div className="muted" style={{ marginTop: 4 }}>
+              {status === "IN_PROGRESS" ? "Drop-off" : "Driver"} ~{driverDistanceKm < 1 ? `${Math.round(driverDistanceKm * 1000)} m` : `${driverDistanceKm.toFixed(1)} km`} away
+            </div>
           )}
         </div>
       )}
