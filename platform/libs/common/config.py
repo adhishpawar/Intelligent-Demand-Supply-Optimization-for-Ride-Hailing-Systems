@@ -62,6 +62,16 @@ class Settings(BaseSettings):
     candidate_radius_km: float = 3.0
     candidate_count: int = 20
 
+    # --- OTP request rate limiting (Round 2 stakeholder council, tech lead: was
+    # completely unbounded — a real SMS-cost-abuse / inbox-flood vector). Settings-
+    # backed rather than a hardcoded module constant for the same reason
+    # offer_ttl_seconds is: a real deployment needs to tune this per-environment
+    # without a code change, and a long-lived shared dev Postgres accumulates real
+    # otp_codes history across every run — a fixed too-low constant would make the
+    # dev/test loop itself trip the limit it's meant to catch abuse with.
+    otp_rate_limit_max_requests: int = 5
+    otp_rate_limit_window_seconds: int = 600
+
     # --- run mode ---
     run_mode: str = "single"  # "single" | "compose"
 

@@ -49,3 +49,13 @@ class IllegalTransitionError(ConflictError):
 
 class ValidationError(DomainError):
     http_status = 422
+
+
+class RateLimitedError(DomainError):
+    """Caller exceeded a request-rate ceiling — e.g. too many OTP requests for the
+    same phone number in a short window. Distinct from ForbiddenError: the caller is
+    not doing anything unauthorized, just doing it too fast; the fix is "wait", not
+    "you are not allowed to do this."
+    """
+
+    http_status = 429

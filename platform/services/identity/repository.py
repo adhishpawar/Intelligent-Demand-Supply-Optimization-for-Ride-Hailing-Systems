@@ -78,6 +78,7 @@ class UserRepository(Protocol):
     async def get_driver_public_info(self, driver_id: str) -> "DriverPublicInfo | None": ...
     async def list_all_drivers(self) -> list[dict]: ...
     async def set_kyc_verified(self, driver_id: str, verified: bool) -> None: ...
+    async def increment_rides_completed(self, driver_id: str) -> None: ...
 
 
 class PgUserRepository:
@@ -208,6 +209,22 @@ class PgUserRepository:
         if result.rowcount == 0:
             raise NotFoundError("driver profile not found", driver_id=driver_id)
 
+    async def increment_rides_completed(self, driver_id: str) -> None:
+        """Round 2 stakeholder council finding: `rides_completed` was defined in the
+        schema, read by every driver-profile endpoint, and now displayed in the
+        driver console (Round 2 item 2) -- but nothing anywhere ever wrote to it. It
+        would have shown 0 forever for every driver, permanently, silently. Called
+        by Trip's identity_client at COMPLETE_TRIP time (mirrors the existing
+        Trip -> Location set_driver_online_again cross-service call), not paired to
+        rating submission, since a driver earns credit for completing a ride whether
+        or not the rider ever bothers to rate it."""
+        result = await self._session.execute(
+            text("UPDATE driver_profiles SET rides_completed = rides_completed + 1 WHERE driver_id = :id"),
+            {"id": driver_id},
+        )
+        if result.rowcount == 0:
+            raise NotFoundError("driver profile not found", driver_id=driver_id)
+
 
 class OtpRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -220,6 +237,23 @@ class OtpRepository:
             ),
             {"phone": phone, "code": code, "ttl": ttl_seconds},
         )
+
+    async def count_recent(self, phone: str, window_seconds: int) -> int:
+        """How many OTPs this phone has been issued in the trailing window --
+        Round 2 stakeholder council (tech lead): `/v1/auth/otp/request` had zero rate
+        limiting, a real SMS-cost-abuse and functional-DoS vector (flood a real
+        person's inbox with codes they never asked for). Backed by the existing
+        `otp_codes` table rather than a new Redis dependency -- this service has no
+        Redis today and one row per request already exists to count."""
+        row = (
+            await self._session.execute(
+                text(
+                    "SELECT count(*) FROM otp_codes WHERE phone = :phone AND created_at > now() - make_interval(secs => :window)"
+                ),
+                {"phone": phone, "window": window_seconds},
+            )
+        ).first()
+        return int(row[0]) if row else 0
 
     async def verify_and_consume(self, phone: str, code: str) -> bool:
         row = (

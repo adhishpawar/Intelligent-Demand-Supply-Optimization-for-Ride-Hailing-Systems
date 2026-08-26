@@ -40,4 +40,6 @@ async def get_identity_service(
         access_ttl=settings.jwt_access_ttl_seconds,
         refresh_ttl=settings.jwt_refresh_ttl_seconds,
         dev_mode=(settings.environment == "dev"),
+        otp_rate_limit_max_requests=settings.otp_rate_limit_max_requests,
+        otp_rate_limit_window_seconds=settings.otp_rate_limit_window_seconds,
     )
