@@ -15,7 +15,7 @@ from libs.common.errors import ForbiddenError
 from libs.security.principal import Principal, Role
 from libs.security.rbac import require_roles
 from services.location.container import get_history_repo, get_location_service, get_session
-from services.location.repository import PgLocationHistoryRepository, get_driver_city
+from services.location.repository import PgLocationHistoryRepository, get_driver_city, set_driver_status_row
 from services.location.schemas import (
     DriverLiveStateResponse,
     LocationPingRequest,
@@ -45,6 +45,12 @@ async def update_status(
 
     city_id = await get_driver_city(session, driver_id) or ""
     seq = await svc.go_online_or_offline(driver_id, body.status, city_id)
+    # Redis is authoritative for "where is this driver right now"; Postgres is
+    # authoritative for "is this driver assigned/available" (PLAN A5's ownership
+    # rule) — both must reflect a status change, not just the fast one. Without
+    # this, services/matching's validate_and_enrich query (which reads
+    # driver_profiles.status) would never see a driver as ONLINE.
+    await set_driver_status_row(session, driver_id, body.status)
     return StatusUpdateResponse(driver_id=driver_id, status=body.status, city_id=city_id, state_seq=seq)
 
 
