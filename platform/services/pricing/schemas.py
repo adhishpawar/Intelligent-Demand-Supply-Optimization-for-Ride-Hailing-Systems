@@ -53,3 +53,15 @@ class CityConfigUpdateRequest(BaseModel):
     surge_cap: float | None = Field(default=None, ge=1.0, le=10.0)
     commission_pct: float | None = Field(default=None, ge=0, le=1.0)
     cancellation_fee: float | None = Field(default=None, ge=0)
+
+
+class VehicleTypeMultipliersResponse(BaseModel):
+    """Round 8 stakeholder council: closes Round 7's "REAL-LITE, hardcoded" note --
+    same DB-backed/admin-editable/audited pattern as CityConfigResponse."""
+
+    multipliers: dict[str, float]
+
+
+class VehicleTypeMultiplierUpdateRequest(BaseModel):
+    vehicle_type: str = Field(pattern="^(SEDAN|HATCHBACK|SUV|AUTO|BIKE)$")
+    multiplier: float = Field(gt=0, le=5.0)

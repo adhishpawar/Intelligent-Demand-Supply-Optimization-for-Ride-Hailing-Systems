@@ -206,7 +206,12 @@ export default function AdminPage() {
             )
           )}
 
-          {view === "settings" && <CityConfigPanel cityId={cityId} />}
+          {view === "settings" && (
+            <>
+              <CityConfigPanel cityId={cityId} />
+              <VehicleMultipliersPanel />
+            </>
+          )}
           {view === "drivers" && <DriversPanel />}
         </div>
       </div>
@@ -342,6 +347,73 @@ function CityConfigPanel({ cityId }) {
         </div>
       ))}
       <button className="btn primary" disabled={saving} onClick={save}>Save changes</button>
+    </div>
+  );
+}
+
+const VEHICLE_TYPE_ORDER = ["BIKE", "AUTO", "HATCHBACK", "SEDAN", "SUV"];
+
+// Round 8 stakeholder council: closes Round 7's "REAL-LITE, hardcoded" note --
+// vehicle-type fare multipliers are now DB-backed and admin-editable, same pattern
+// as CityConfigPanel above (not city-specific, so shown once, not per-city).
+function VehicleMultipliersPanel() {
+  const toast = useToast();
+  const [multipliers, setMultipliers] = useState(null);
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      const { multipliers: m } = await api.get("/v1/pricing/vehicle-multipliers");
+      setMultipliers(m);
+      setDraft(m);
+    } catch (e) {
+      toast(e.message);
+    }
+  }, [toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function save(vehicleType) {
+    setSaving(vehicleType);
+    try {
+      const { multipliers: m } = await api.patch("/v1/pricing/vehicle-multipliers", {
+        vehicle_type: vehicleType, multiplier: Number(draft[vehicleType]),
+      });
+      setMultipliers(m);
+      setDraft(m);
+      toast(`${vehicleType} multiplier saved — audit-logged, no deploy needed`);
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  if (!multipliers) return <div className="card"><div className="muted">Loading…</div></div>;
+
+  return (
+    <div className="card">
+      <h3>Vehicle-type fare multipliers</h3>
+      <div className="muted">Applied to the base fare before surge. Live, admin-editable, audit-logged (see `vehicle_type_multiplier_events`) -- takes effect on the next fare calculation, no deploy.</div>
+      {VEHICLE_TYPE_ORDER.map((vt) => (
+        <div key={vt} className="row" style={{ alignItems: "flex-end" }}>
+          <div style={{ flex: 2 }}>
+            <label>{vt}</label>
+            <input
+              type="number" step="0.01" min="0.01" value={draft[vt] ?? ""}
+              onChange={(e) => setDraft({ ...draft, [vt]: e.target.value })}
+            />
+          </div>
+          <button
+            className="btn ghost" style={{ flex: 1, marginTop: 10 }}
+            disabled={saving === vt || Number(draft[vt]) === multipliers[vt]}
+            onClick={() => save(vt)}
+          >
+            {saving === vt ? "Saving…" : "Save"}
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

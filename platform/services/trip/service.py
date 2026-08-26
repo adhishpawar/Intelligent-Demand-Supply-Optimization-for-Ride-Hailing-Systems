@@ -24,6 +24,7 @@ from libs.persistence.unit_of_work import UnitOfWork
 from libs.geo.city_config_repo import get_rate_card
 from libs.pricing.fare import estimate_fare
 from libs.pricing.surge_reader import read_surge_multiplier
+from libs.pricing.vehicle_type_repo import get_vehicle_type_multiplier
 from libs.security.principal import Principal, Role
 from services.trip.fsm import Event
 from services.trip.matching_client import MatchingClient
@@ -72,7 +73,12 @@ class TripService:
             # read live, inside the same transaction, rather than the in-memory
             # default.
             rate_card = await get_rate_card(uow.session, city.city_id)
-            fare_estimate = estimate_fare(rate_card, distance_m, duration_s, surge, vehicle_type)
+            # Round 8 stakeholder council: vehicle-type multipliers are now
+            # DB-backed and admin-editable (vehicle_type_multipliers), not the
+            # hardcoded libs.pricing.fare constant -- same pattern as the rate
+            # card immediately above.
+            vt_multiplier = await get_vehicle_type_multiplier(uow.session, vehicle_type)
+            fare_estimate = estimate_fare(rate_card, distance_m, duration_s, surge, vt_multiplier)
             trip = await repo.create(
                 rider_id=rider_id, city_id=city.city_id,
                 pickup_lat=pickup[0], pickup_lng=pickup[1], pickup_geohash7=pickup_geohash,
@@ -275,7 +281,8 @@ class TripService:
             distance_m = eta_estimator.distance_m(trip.pickup_lat, trip.pickup_lng, trip.drop_lat, trip.drop_lng)
             duration_s = (utcnow() - (trip.requested_at)).total_seconds()
             rate_card = await get_rate_card(uow.session, trip.city_id)
-            fare_final = estimate_fare(rate_card, distance_m, duration_s, trip.surge_multiplier, trip.vehicle_type_requested)
+            vt_multiplier = await get_vehicle_type_multiplier(uow.session, trip.vehicle_type_requested)
+            fare_final = estimate_fare(rate_card, distance_m, duration_s, trip.surge_multiplier, vt_multiplier)
 
             trip = await repo.apply_transition(
                 trip.trip_id, Event.COMPLETE_TRIP, now=utcnow(), max_dispatch_attempts=self._settings.max_dispatch_attempts,
