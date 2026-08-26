@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     otp_rate_limit_max_requests: int = 5
     otp_rate_limit_window_seconds: int = 600
 
+    # --- OTP verify brute-force lockout (Round 14 stakeholder council, tech lead:
+    # Round 2 rate-limited OTP *requests*; nothing rate-limited OTP *verify*
+    # attempts, a real brute-force vector against a 6-digit code with no lockout).
+    # Settings-backed for the same per-environment-tunable reason as the request
+    # limit above.
+    otp_verify_max_attempts: int = 5
+
     # --- run mode ---
     run_mode: str = "single"  # "single" | "compose"
 

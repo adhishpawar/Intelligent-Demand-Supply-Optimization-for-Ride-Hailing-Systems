@@ -33,6 +33,10 @@ class IdentityService:
         # pattern as offer_ttl_seconds, not a hardcoded module constant.
         otp_rate_limit_max_requests: int = 5,
         otp_rate_limit_window_seconds: int = 600,
+        # Round 14 stakeholder council (tech lead): Round 2 rate-limited OTP
+        # *requests*; nothing rate-limited OTP *verify* attempts, a real
+        # brute-force vector against a 6-digit code with no lockout.
+        otp_verify_max_attempts: int = 5,
     ) -> None:
         self._users = users
         self._otps = otps
@@ -42,6 +46,7 @@ class IdentityService:
         self._access_ttl = access_ttl
         self._otp_rate_limit_max_requests = otp_rate_limit_max_requests
         self._otp_rate_limit_window_seconds = otp_rate_limit_window_seconds
+        self._otp_verify_max_attempts = otp_verify_max_attempts
         self._refresh_ttl = refresh_ttl
         self._dev_mode = dev_mode
 
@@ -93,7 +98,7 @@ class IdentityService:
         return code  # caller decides whether to surface this (dev_mode only)
 
     async def verify_otp(self, phone: str, code: str):
-        ok = await self._otps.verify_and_consume(phone, code)
+        ok = await self._otps.verify_and_consume(phone, code, self._otp_verify_max_attempts)
         if not ok:
             raise UnauthorizedError("invalid or expired OTP code")
 
