@@ -219,7 +219,7 @@ class TripService:
                 uow.emit(
                     Topic.RIDE_ASSIGNED, trip.city_id,
                     RideAssigned(
-                        trip_id=trip_id, driver_id=driver_id, city_id=trip.city_id,
+                        trip_id=trip_id, driver_id=driver_id, rider_id=trip.rider_id, city_id=trip.city_id,
                         time_to_match_seconds=(utcnow() - trip.requested_at).total_seconds(),
                         dispatch_attempts=trip.dispatch_attempts,
                     ).model_dump(mode="json"),

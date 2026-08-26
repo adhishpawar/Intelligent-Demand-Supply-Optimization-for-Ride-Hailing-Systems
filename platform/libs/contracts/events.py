@@ -36,6 +36,12 @@ class RideRequested(EventEnvelope):
 class RideAssigned(EventEnvelope):
     trip_id: str
     driver_id: str
+    # Round 11 stakeholder council: rider_id was missing here too (same class of
+    # gap Round 10 found on RideCancelled) -- NotificationFanout._recipients_for
+    # could only ever notify the driver, never the rider, about their own
+    # assignment. The rider does get a live status toast (Round 2), but nothing
+    # persisted in their notification history if they were away when it happened.
+    rider_id: str
     city_id: str
     time_to_match_seconds: float
     dispatch_attempts: int
