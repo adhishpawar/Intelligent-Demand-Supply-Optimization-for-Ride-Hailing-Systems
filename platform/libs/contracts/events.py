@@ -54,6 +54,15 @@ class RideCompleted(EventEnvelope):
 class RideCancelled(EventEnvelope):
     trip_id: str
     city_id: str
+    # Round 10 stakeholder council: rider_id/driver_id were missing from this event
+    # entirely -- services/notification's _recipients_for reads exactly these two
+    # fields off the payload to decide who to notify, via payload.get(...) (so no
+    # KeyError, just a silently empty recipient list every time). The result: zero
+    # ride.cancelled notifications were ever created, for any cancellation, all
+    # night -- not a wiring gap this time, a schema/consumer mismatch that never
+    # threw, just quietly did nothing.
+    rider_id: str
+    driver_id: str | None = None
     cancelled_by: Literal["RIDER", "DRIVER", "SYSTEM"]
     reason: str | None = None
     fee_applied: float = 0.0
