@@ -207,7 +207,7 @@ class TripService:
         await self._matching.release_claim(driver_id=driver_id, trip_id=trip_id)
         if action == "ACCEPT":
             from services.trip.location_client import set_driver_on_trip
-            await set_driver_on_trip(self._settings, driver_id)
+            await set_driver_on_trip(self._settings, driver_id, trip_id)
         elif action == "REJECT":
             await self.dispatch_step(trip_id)  # immediate re-dispatch, low latency (PLAN A4)
         return trip
@@ -372,6 +372,16 @@ class TripService:
             trip = await repo.get(trip_id)
             repo.assert_ownership(trip, principal_id=principal.user_id, is_admin=principal.has_role(Role.ADMIN))
             return trip
+
+    async def get_current_offer(self, driver_id: str) -> TripRecord | None:
+        async with self._uow_factory() as uow:
+            repo = TripRepository(uow.session)
+            return await repo.find_active_offer_for_driver(driver_id)
+
+    async def list_recent(self, limit: int = 50) -> list[TripRecord]:
+        async with self._uow_factory() as uow:
+            repo = TripRepository(uow.session)
+            return await repo.list_recent(limit)
 
     async def audit_trail(self, trip_id: str, principal: Principal) -> list[dict]:
         async with self._uow_factory() as uow:

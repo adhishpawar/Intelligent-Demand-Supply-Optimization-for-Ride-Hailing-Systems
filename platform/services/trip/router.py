@@ -32,6 +32,35 @@ async def request_ride(
     return _to_response(trip)
 
 
+@router.get("/v1/drivers/{driver_id}/current-offer")
+async def get_current_offer(
+    driver_id: str,
+    principal: Principal = Depends(require_roles(Role.DRIVER, Role.ADMIN)),
+    svc: TripService = Depends(get_trip_service),
+):
+    if principal.role == Role.DRIVER and principal.user_id != driver_id:
+        raise ForbiddenError("a driver can only read their own offer")
+    trip = await svc.get_current_offer(driver_id)
+    if trip is None:
+        return {"offer": None}
+    return {
+        "offer": {
+            "trip_id": trip.trip_id, "offer_id": trip.current_offer_id,
+            "expires_at": trip.current_offer_expires_at.isoformat(),
+            "pickup_lat": trip.pickup_lat, "pickup_lng": trip.pickup_lng,
+        }
+    }
+
+
+@router.get("/v1/trips", response_model=list[TripResponse])
+async def list_recent_trips(
+    _principal: Principal = Depends(require_roles(Role.ADMIN)),
+    svc: TripService = Depends(get_trip_service),
+):
+    trips = await svc.list_recent()
+    return [_to_response(t) for t in trips]
+
+
 @router.get("/v1/trips/{trip_id}", response_model=TripResponse)
 async def get_trip(
     trip_id: str, principal: Principal = Depends(require_roles(Role.RIDER, Role.DRIVER, Role.ADMIN)),

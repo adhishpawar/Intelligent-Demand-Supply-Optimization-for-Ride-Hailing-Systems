@@ -9,6 +9,7 @@ from libs.common.http_errors import install_error_handlers
 from libs.common.logging import configure_logging
 from libs.persistence.engine import make_engine, make_sessionmaker
 from services.location import container
+from services.location.admin_router import router as admin_router
 from services.location.router import router
 from services.location.sweeper import StalenessSweeper
 
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Location Service", lifespan=lifespan)
     install_error_handlers(app)
     app.include_router(router)
+    app.include_router(admin_router)
 
     @app.get("/health")
     async def health():

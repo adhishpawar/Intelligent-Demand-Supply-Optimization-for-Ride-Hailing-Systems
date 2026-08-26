@@ -257,6 +257,34 @@ class TripRepository:
         ).all()
         return [str(r[0]) for r in rows]
 
+    async def find_active_offer_for_driver(self, driver_id: str) -> TripRecord | None:
+        """Catch-up path for the driver offer WS (PLAN's "never trust a single path"
+        principle, applied here to Redis pub/sub specifically): pub/sub has no
+        replay, so a driver whose WebSocket reconnects (a page reload, a network
+        blip) after an offer was already published would otherwise never see it
+        until it naturally times out. The driver app calls this once on connect to
+        recover any already-active offer that the live push may have missed."""
+        row = (
+            await self._session.execute(
+                text(
+                    f"SELECT {_COLUMNS} FROM trips WHERE current_offer_driver_id = :driver_id "
+                    "AND status = 'MATCHING' AND current_offer_expires_at > now() LIMIT 1"
+                ),
+                {"driver_id": driver_id},
+            )
+        ).mappings().first()
+        return TripRecord(**dict(row)) if row else None
+
+    async def list_recent(self, limit: int = 50) -> list[TripRecord]:
+        """Admin-only aggregate read (PLAN §6.4 D5: the admin console must be able to
+        show real trip activity, not a mocked feed)."""
+        rows = (
+            await self._session.execute(
+                text(f"SELECT {_COLUMNS} FROM trips ORDER BY requested_at DESC LIMIT :limit"), {"limit": limit}
+            )
+        ).mappings().all()
+        return [TripRecord(**dict(r)) for r in rows]
+
     async def find_trips_past_deadline(self, now: datetime) -> list[str]:
         rows = (
             await self._session.execute(

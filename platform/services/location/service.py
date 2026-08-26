@@ -20,12 +20,13 @@ from libs.geo.geohash import encode as geohash_encode
 class LocationService:
     def __init__(self, index: DriverIndexRepository, event_bus: EventBus) -> None:
         self._index = index
+        self.index = index  # public — used by services/location/admin_router.py's live heatmap read
         self._bus = event_bus
 
-    async def go_online_or_offline(self, driver_id: str, status: str, city_id: str) -> int:
+    async def go_online_or_offline(self, driver_id: str, status: str, city_id: str, trip_id: str | None = None) -> int:
         if status == "ONLINE" and not city_id:
             raise ConflictError("cannot go online without a registered city_id")
-        seq = await self._index.set_status(driver_id, status, city_id)
+        seq = await self._index.set_status(driver_id, status, city_id, trip_id)
         await self._bus.publish(
             Topic.DRIVER_STATUS.value,
             driver_id,
@@ -50,6 +51,22 @@ class LocationService:
         if result == INGEST_REJECTED_OUT_OF_ORDER:
             return False, "ping is older than the last accepted ping — ignored to avoid teleporting the driver backwards"
         assert result == INGEST_ACCEPTED
+
+        # THE live-tracking path (HLD RH-FR-05: "Live location streamed to rider
+        # during an active trip"). This is a synchronous, direct Redis publish to
+        # the trip's own WS channel — never routed through Kafka — for the same
+        # reason PLAN A4 keeps user-visible pushes off the durability/fan-out path:
+        # a rider watching their driver's dot on the map cannot be gated on
+        # consumer lag. `current_trip_id` is set by Trip via set_driver_on_trip()
+        # at ACCEPT time and cleared at completion/cancellation (see
+        # libs/geo/driver_index.py's atomic status+trip Lua script).
+        current_trip_id = state.get("current_trip_id")
+        if current_trip_id:
+            import json
+            await self._index.redis.publish(
+                f"trip:{current_trip_id}:stream",
+                json.dumps({"type": "DRIVER_POSITION", "lat": lat, "lng": lng, "heading": heading, "speed_kmh": speed_kmh}),
+            )
 
         # Fire-and-forget: publish for downstream consumers (never on the sync path
         # the HTTP response depends on — PLAN A4, "Kafka carries durability/fan-out,
