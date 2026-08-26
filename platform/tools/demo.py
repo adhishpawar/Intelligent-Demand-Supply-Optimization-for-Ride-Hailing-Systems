@@ -86,7 +86,16 @@ def main() -> int:
         step("Rider requests a ride")
         r = client.post(
             f"{BASE['trip']}/v1/trips",
-            json={"pickup": {"lat": 18.5204, "lng": 73.8567}, "drop": {"lat": 18.5600, "lng": 73.9000}}, headers=hr,
+            # vehicle_type: AUTO -- Round 7 stakeholder council added vehicle-type
+            # filtering to dispatch; DRIVER_PHONE (seed driver #12, "Lata Driver") is
+            # seeded as AUTO (tools/seed.py's DRIVER_SPECS), so the request must
+            # actually ask for that type or the (now real) filter would correctly
+            # exclude this driver and the demo would go to NO_DRIVER_FOUND.
+            json={
+                "pickup": {"lat": 18.5204, "lng": 73.8567}, "drop": {"lat": 18.5600, "lng": 73.9000},
+                "vehicle_type": "AUTO",
+            },
+            headers=hr,
         )
         assert r.status_code == 200, r.text
         trip = r.json()

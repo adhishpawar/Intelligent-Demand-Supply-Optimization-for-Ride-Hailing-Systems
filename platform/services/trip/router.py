@@ -28,7 +28,9 @@ async def request_ride(
     principal: Principal = Depends(require_roles(Role.RIDER)),
     svc: TripService = Depends(get_trip_service),
 ):
-    trip = await svc.request_ride(principal.user_id, (body.pickup.lat, body.pickup.lng), (body.drop.lat, body.drop.lng))
+    trip = await svc.request_ride(
+        principal.user_id, (body.pickup.lat, body.pickup.lng), (body.drop.lat, body.drop.lng), body.vehicle_type,
+    )
     return _to_response(trip)
 
 

@@ -29,14 +29,15 @@ class MatchingClient:
         return {"X-Internal-Principal": token}
 
     async def dispatch(
-        self, *, trip_id: str, city_id: str, pickup_lat: float, pickup_lng: float, excluded_driver_ids: list[str]
+        self, *, trip_id: str, city_id: str, pickup_lat: float, pickup_lng: float, excluded_driver_ids: list[str],
+        vehicle_type: str = "SEDAN",
     ) -> dict:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.post(
                 f"{self._base_url}/v1/matching/dispatch",
                 json={
                     "trip_id": trip_id, "city_id": city_id, "pickup_lat": pickup_lat, "pickup_lng": pickup_lng,
-                    "excluded_driver_ids": excluded_driver_ids,
+                    "excluded_driver_ids": excluded_driver_ids, "vehicle_type": vehicle_type,
                 },
                 headers=self._system_header(),
             )

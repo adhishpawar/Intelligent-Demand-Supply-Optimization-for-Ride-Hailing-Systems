@@ -10,9 +10,17 @@ class LatLng(BaseModel):
     lng: float = Field(ge=-180, le=180)
 
 
+VEHICLE_TYPES_PATTERN = "^(SEDAN|HATCHBACK|SUV|AUTO|BIKE)$"
+
+
 class RequestRideRequest(BaseModel):
     pickup: LatLng
     drop: LatLng
+    # Round 7 stakeholder council: the vehicle_type taxonomy has existed since V001
+    # and the seeded drivers were already deliberately spread across all five types
+    # -- riders just never had a way to ask for one. Defaults to SEDAN so existing
+    # callers (tools/demo.py, older cached frontend builds) keep working unchanged.
+    vehicle_type: str = Field(default="SEDAN", pattern=VEHICLE_TYPES_PATTERN)
 
 
 class TripResponse(BaseModel):
@@ -34,6 +42,7 @@ class TripResponse(BaseModel):
     current_offer_expires_at: datetime | None
     cancellation_fee_applied: float
     requested_at: datetime
+    vehicle_type_requested: str
 
 
 class RespondRequest(BaseModel):

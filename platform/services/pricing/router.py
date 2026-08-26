@@ -36,7 +36,7 @@ async def estimate(
     # Round 1 stakeholder council: the rate card is DB-backed and admin-editable
     # (city_configs), not the hardcoded libs.geo.cities default.
     rate_card = await get_rate_card(session, city.city_id)
-    fare = estimate_fare(rate_card, distance_m, duration_s, surge)
+    fare = estimate_fare(rate_card, distance_m, duration_s, surge, body.vehicle_type)
 
     # eta_pickup: how long until a driver could reach the pickup point -- a rough
     # city-average estimate tonight (a real pickup ETA needs the nearest candidate's

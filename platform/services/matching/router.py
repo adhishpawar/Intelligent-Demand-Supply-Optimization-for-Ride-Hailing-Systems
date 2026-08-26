@@ -41,6 +41,7 @@ async def dispatch(
         radius_km=settings.candidate_radius_km,
         count=settings.candidate_count,
         at=datetime.now(timezone.utc),
+        vehicle_type=body.vehicle_type,
     )
     return DispatchResponse(**result.__dict__)
 

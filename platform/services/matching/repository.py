@@ -11,13 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def validate_and_enrich(
-    session: AsyncSession, candidate_ids: list[str]
+    session: AsyncSession, candidate_ids: list[str], vehicle_type: str = "SEDAN"
 ) -> dict[str, dict]:
     """Returns {driver_id: {rating_avg, acceptance_rate}} for exactly the candidates
     that are (a) still ONLINE in driver_profiles, (b) not already assigned to an
-    active trip, and (c) KYC-verified -- all three re-checked here even though Redis
-    is supposed to already reflect (a)/(b), because Redis is a cache of the truth,
-    not the truth.
+    active trip, (c) KYC-verified, and (d) driving the vehicle type the rider
+    actually requested -- (a)/(b) re-checked here even though Redis is supposed to
+    already reflect them, because Redis is a cache of the truth, not the truth.
 
     (c) is a Round 5 stakeholder council (tech lead/compliance) fix: `kyc_verified`
     was written by the admin KYC toggle and read by every driver-profile display, but
@@ -26,7 +26,15 @@ async def validate_and_enrich(
     one. This is the one place that decides who a rider is actually matched with, so
     it's the correct enforcement point, not the go-online endpoint (which is
     Location's, a different service, and "can this driver toggle their own status"
-    is a different question from "can this driver actually carry a passenger")."""
+    is a different question from "can this driver actually carry a passenger").
+
+    (d) is Round 7: the vehicle_type taxonomy existed since V001 (and the seeded
+    drivers were already spread across all five types) with no filtering anywhere --
+    a rider requesting an AUTO could be matched with a driver's SUV. Joins `vehicles`
+    via `driver_profiles.vehicle_id`, the driver's current assigned vehicle, not
+    `vehicles.driver_id` directly -- semantically "what are they driving right now,"
+    which is what matters for this candidate list, even though both columns agree
+    for every driver as the schema stands tonight (one vehicle per driver)."""
     if not candidate_ids:
         return {}
     rows = (
@@ -36,9 +44,11 @@ async def validate_and_enrich(
                 SELECT dp.driver_id, u.rating_avg, dp.acceptance_rate
                 FROM driver_profiles dp
                 JOIN users u ON u.user_id = dp.driver_id
+                JOIN vehicles v ON v.vehicle_id = dp.vehicle_id
                 WHERE dp.driver_id = ANY(:ids)
                   AND dp.status = 'ONLINE'
                   AND dp.kyc_verified = TRUE
+                  AND v.vehicle_type = :vehicle_type
                   AND dp.driver_id NOT IN (
                       SELECT driver_id FROM trips
                       WHERE driver_id IS NOT NULL
@@ -46,7 +56,7 @@ async def validate_and_enrich(
                   )
                 """
             ),
-            {"ids": candidate_ids},
+            {"ids": candidate_ids, "vehicle_type": vehicle_type},
         )
     ).mappings().all()
     return {
