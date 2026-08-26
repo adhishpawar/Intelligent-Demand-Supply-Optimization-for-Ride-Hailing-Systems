@@ -16,7 +16,9 @@ class LocationPingResponse(BaseModel):
 
 
 class StatusUpdateRequest(BaseModel):
-    status: str = Field(pattern="^(ONLINE|OFFLINE)$")
+    # ON_TRIP is set internally by the Trip service on accept/complete/cancel
+    # (services/trip/location_client.py), never directly by a driver client.
+    status: str = Field(pattern="^(ONLINE|OFFLINE|ON_TRIP)$")
 
 
 class StatusUpdateResponse(BaseModel):
