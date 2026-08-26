@@ -24,6 +24,7 @@ export default function DriverPage() {
   const selfMarkerRef = useRef(null);
   const pingTimerRef = useRef(null);
   const pollTimerRef = useRef(null);
+  const earningsCreditedRef = useRef(new Set()); // trip_ids already added to earnings, so a re-poll never double-counts
   const posRef = useRef({ lat: PUNE_CENTER[0] + (Math.random() - 0.5) * 0.02, lng: PUNE_CENTER[1] + (Math.random() - 0.5) * 0.02 });
 
   const [online, setOnline] = useState(false);
@@ -206,13 +207,43 @@ export default function DriverPage() {
     return () => clearInterval(pollTimerRef.current);
   }, [tripId, pollTrip]);
 
+  // Round 9 stakeholder council (tech lead, financial correctness): "Session
+  // earnings" used to add `fare_final * 0.8` -- a hardcoded guess at the driver's
+  // payout share, completely disconnected from the real, admin-configurable
+  // commission_pct (Round 1's city settings). If an admin ever changed a city's
+  // commission, this number would have been silently wrong. It also never
+  // reflected cancellation-fee payouts at all (those weren't even real until this
+  // round -- see PaymentService.charge_cancellation_fee). Fixed by reading the real
+  // ledger once a trip reaches a status where a driver-side credit could exist,
+  // rather than estimating one client-side.
+  useEffect(() => {
+    if (!trip) return;
+    const settledStatuses = ["PAID", "CANCELLED_BY_RIDER", "CANCELLED_BY_SYSTEM"];
+    if (!settledStatuses.includes(trip.status)) return;
+    if (earningsCreditedRef.current.has(trip.trip_id)) return;
+    // Cancellation-fee posting happens asynchronously (a Kafka consumer reacting to
+    // the same ride.cancelled event that already flipped this status), so the
+    // ledger can genuinely still be empty on the first poll or two after a
+    // cancellation -- only mark this trip "done" once real DRIVER-side entries are
+    // actually found, so the 1.5s poll naturally retries in the meantime rather
+    // than permanently missing a credit that lands a beat later.
+    api.get(`/v1/payments/${trip.trip_id}/ledger`).then((ledger) => {
+      const driverCredit = (ledger.entries || [])
+        .filter((e) => e.account_type === "DRIVER")
+        .reduce((sum, e) => sum + e.amount, 0);
+      if (driverCredit > 0) {
+        earningsCreditedRef.current.add(trip.trip_id);
+        setEarnings((e) => e + driverCredit);
+      }
+    }).catch(() => {
+      /* transient -- next poll retries */
+    });
+  }, [trip]);
+
   async function advance(step) {
     try {
       const updated = await api.post(`/v1/trips/${tripId}/${step}`);
       setTrip(updated);
-      if (updated.status === "PAID" || updated.status === "COMPLETED") {
-        if (updated.fare_final) setEarnings((e) => e + updated.fare_final * 0.8); // driver payout share, matches commission split
-      }
       if (["PAID", "RATED", "NO_DRIVER_FOUND", "CANCELLED_BY_RIDER", "CANCELLED_BY_DRIVER", "CANCELLED_BY_SYSTEM"].includes(updated.status)) {
         setTimeout(() => {
           setTripId(null);
