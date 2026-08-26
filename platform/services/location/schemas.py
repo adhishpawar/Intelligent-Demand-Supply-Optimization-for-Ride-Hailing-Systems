@@ -19,6 +19,7 @@ class StatusUpdateRequest(BaseModel):
     # ON_TRIP is set internally by the Trip service on accept/complete/cancel
     # (services/trip/location_client.py), never directly by a driver client.
     status: str = Field(pattern="^(ONLINE|OFFLINE|ON_TRIP)$")
+    trip_id: str | None = None  # set alongside ON_TRIP so pings can be live-streamed to that trip's riders
 
 
 class StatusUpdateResponse(BaseModel):

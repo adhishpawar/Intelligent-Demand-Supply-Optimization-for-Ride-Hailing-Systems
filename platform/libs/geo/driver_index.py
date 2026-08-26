@@ -41,6 +41,11 @@ return 1
 _SET_STATUS_SCRIPT = """
 local seq = redis.call('HINCRBY', KEYS[1], 'state_seq', 1)
 redis.call('HSET', KEYS[1], 'status', ARGV[1], 'city_id', ARGV[3])
+if ARGV[4] ~= '' then
+    redis.call('HSET', KEYS[1], 'current_trip_id', ARGV[4])
+else
+    redis.call('HDEL', KEYS[1], 'current_trip_id')
+end
 if ARGV[1] ~= 'ONLINE' then
     redis.call('ZREM', KEYS[2], ARGV[2])
     redis.call('SREM', KEYS[3], ARGV[2])
@@ -69,6 +74,10 @@ class DriverIndexRepository:
     def __init__(self, redis: Redis) -> None:
         self._redis = redis
 
+    @property
+    def redis(self) -> Redis:
+        return self._redis
+
     @staticmethod
     def _hash_key(driver_id: str) -> str:
         return f"driver:{driver_id}"
@@ -77,7 +86,7 @@ class DriverIndexRepository:
     def _geo_key(city_id: str) -> str:
         return f"drivers:city:{city_id}"
 
-    async def set_status(self, driver_id: str, status: str, city_id: str) -> int:
+    async def set_status(self, driver_id: str, status: str, city_id: str, trip_id: str | None = None) -> int:
         return await self._redis.eval(
             _SET_STATUS_SCRIPT,
             3,
@@ -87,6 +96,7 @@ class DriverIndexRepository:
             status,
             driver_id,
             city_id,
+            trip_id or "",
         )
 
     async def list_online_driver_ids(self) -> set[str]:

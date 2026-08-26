@@ -14,6 +14,7 @@ import logging
 
 import httpx
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from libs.common.config import get_settings
@@ -27,6 +28,14 @@ configure_logging("gateway")
 logger = logging.getLogger("gateway")
 
 app = FastAPI(title="API Gateway")
+# The frontend (web/rider, web/driver, web/admin) is served as static files from a
+# different origin than the gateway (PLAN §4.1: buildless static frontend, no build
+# step) -- CORS is required for the browser to call across ports. Wide open (dev
+# only): every origin/method/header allowed, since this is a local demo with no
+# real users or credentials at stake.
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"],
+)
 _routes = build_routes()
 
 _HOP_BY_HOP = {"connection", "keep-alive", "transfer-encoding", "upgrade", "host", "content-length"}
