@@ -14,6 +14,16 @@ function stepToward(from, to, fraction) {
   return { lat: from.lat + (to.lat - from.lat) * fraction, lng: from.lng + (to.lng - from.lng) * fraction };
 }
 
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export default function DriverPage() {
   const { userId, logout } = useAuth();
   const toast = useToast();
@@ -215,6 +225,19 @@ export default function DriverPage() {
           <div className="offer-card">
             <h3>🚗 New ride request</h3>
             <div className="countdown">{countdown}s</div>
+            {/* Round 1 stakeholder council, driver pain #1: show what the ride
+                actually pays and where it goes -- a driver cannot make a real
+                accept/reject decision on a countdown and an ETA number alone. */}
+            {offer.fare_estimate != null && (
+              <div className="fare-line total" style={{ justifyContent: "center", gap: 8 }}>
+                <span>Estimated fare</span><span>₹{offer.fare_estimate.toFixed(2)}</span>
+              </div>
+            )}
+            {offer.drop_lat != null && (
+              <div className="muted">
+                Trip distance ~{haversineKm(offer.pickup_lat, offer.pickup_lng, offer.drop_lat, offer.drop_lng).toFixed(1)} km
+              </div>
+            )}
             <div className="muted">Pickup ETA ~{Math.round(offer.eta_seconds)}s away</div>
             <div className="row" style={{ marginTop: 16 }}>
               <button className="btn danger" onClick={() => respondToOffer("REJECT")}>Reject</button>

@@ -104,6 +104,21 @@ button.btn.ghost { background: transparent; border: 1px solid var(--border); col
 .live-indicator { font-size: 0.72rem; font-weight: 600; vertical-align: middle; }
 .live-indicator.live { color: var(--good); }
 .live-indicator.reconnecting { color: var(--warn); }
+.driver-card {
+  margin-top: 12px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.driver-card-name { font-weight: 600; }
+.tab-row { display: flex; gap: 6px; margin-bottom: 14px; }
+.tab-btn {
+  flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-dim); font-size: 0.82rem; cursor: pointer;
+}
+.tab-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+.confirm-inline {
+  margin-top: 12px; padding: 12px; background: rgba(239,68,68,0.08); border: 1px solid var(--bad);
+  border-radius: 10px; font-size: 0.9rem;
+}
 .role-badge.rider { color: var(--accent); }
 .role-badge.driver { color: var(--good); }
 .role-badge.admin { color: var(--accent-2); }

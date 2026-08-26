@@ -275,6 +275,17 @@ class TripRepository:
         ).mappings().first()
         return TripRecord(**dict(row)) if row else None
 
+    async def list_for_rider(self, rider_id: str, limit: int = 50) -> list[TripRecord]:
+        """Round 1 stakeholder council, rider pain #2: "no trip history anywhere."
+        A rider's own past trips, not the admin's all-trips feed."""
+        rows = (
+            await self._session.execute(
+                text(f"SELECT {_COLUMNS} FROM trips WHERE rider_id = :rider_id ORDER BY requested_at DESC LIMIT :limit"),
+                {"rider_id": rider_id, "limit": limit},
+            )
+        ).mappings().all()
+        return [TripRecord(**dict(r)) for r in rows]
+
     async def list_recent(self, limit: int = 50) -> list[TripRecord]:
         """Admin-only aggregate read (PLAN §6.4 D5: the admin console must be able to
         show real trip activity, not a mocked feed)."""

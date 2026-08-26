@@ -17,6 +17,7 @@ export default function AdminPage() {
   const markersRef = useRef(new Map());
 
   const [cityId, setCityId] = useState("pune");
+  const [view, setView] = useState("trips"); // "trips" | "settings" | "drivers"
   const [heatmap, setHeatmap] = useState({ drivers: [], online_count: 0 });
   const [trips, setTrips] = useState([]);
   const [selectedTrip, setSelectedTrip] = useState(null);
@@ -109,27 +110,38 @@ export default function AdminPage() {
             <div className="stat-tile"><div className="value">{trips.length}</div><div className="label">Recent trips (feed)</div></div>
           </div>
 
-          {selectedTrip ? (
-            <TripDetail trip={selectedTrip} audit={audit} ledger={ledger} onBack={() => setSelectedTrip(null)} />
-          ) : (
-            <div className="card">
-              <h3>Recent trips (live)</h3>
-              <div style={{ maxHeight: 480, overflowY: "auto" }}>
-                <table className="data-table">
-                  <thead><tr><th>Trip</th><th>Status</th><th>Fare</th></tr></thead>
-                  <tbody>
-                    {trips.map((t) => (
-                      <tr key={t.trip_id} style={{ cursor: "pointer" }} onClick={() => selectTrip(t)}>
-                        <td>{t.trip_id.slice(0, 8)}…</td>
-                        <td><StatusPill status={t.status} /></td>
-                        <td>{t.fare_final != null ? `₹${t.fare_final.toFixed(2)}` : t.fare_estimate ? `~₹${t.fare_estimate.toFixed(2)}` : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <div className="tab-row">
+            <button className={`tab-btn ${view === "trips" ? "active" : ""}`} onClick={() => { setView("trips"); setSelectedTrip(null); }}>Trips</button>
+            <button className={`tab-btn ${view === "settings" ? "active" : ""}`} onClick={() => setView("settings")}>City settings</button>
+            <button className={`tab-btn ${view === "drivers" ? "active" : ""}`} onClick={() => setView("drivers")}>Drivers / KYC</button>
+          </div>
+
+          {view === "trips" && (
+            selectedTrip ? (
+              <TripDetail trip={selectedTrip} audit={audit} ledger={ledger} onBack={() => setSelectedTrip(null)} />
+            ) : (
+              <div className="card">
+                <h3>Recent trips (live)</h3>
+                <div style={{ maxHeight: 480, overflowY: "auto" }}>
+                  <table className="data-table">
+                    <thead><tr><th>Trip</th><th>Status</th><th>Fare</th></tr></thead>
+                    <tbody>
+                      {trips.map((t) => (
+                        <tr key={t.trip_id} style={{ cursor: "pointer" }} onClick={() => selectTrip(t)}>
+                          <td>{t.trip_id.slice(0, 8)}…</td>
+                          <td><StatusPill status={t.status} /></td>
+                          <td>{t.fare_final != null ? `₹${t.fare_final.toFixed(2)}` : t.fare_estimate ? `~₹${t.fare_estimate.toFixed(2)}` : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )
           )}
+
+          {view === "settings" && <CityConfigPanel cityId={cityId} />}
+          {view === "drivers" && <DriversPanel />}
         </div>
       </div>
     </div>
@@ -178,6 +190,131 @@ function TripDetail({ trip, audit, ledger, onBack }) {
           </table>
         </>
       )}
+    </div>
+  );
+}
+
+const CONFIG_FIELDS = [
+  { key: "base_fare", label: "Base fare (₹)" },
+  { key: "per_km_rate", label: "Per km rate (₹)" },
+  { key: "per_min_rate", label: "Per min rate (₹)" },
+  { key: "booking_fee", label: "Booking fee (₹)" },
+  { key: "surge_cap", label: "Surge cap (×)" },
+  { key: "commission_pct", label: "Platform commission (0-1)" },
+  { key: "cancellation_fee", label: "Cancellation fee (₹)" },
+];
+
+// Round 1 stakeholder council: ops + tech-lead independently flagged the same gap —
+// every business rule GAP AS-06 called ambiguous was a hardcoded Python constant,
+// changeable only by a deploy. This is the admin-facing, audited, DB-backed fix.
+function CityConfigPanel({ cityId }) {
+  const toast = useToast();
+  const [config, setConfig] = useState(null);
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const c = await api.get(`/v1/pricing/config/${cityId}`);
+      setConfig(c);
+      setDraft(c);
+    } catch (e) {
+      toast(e.message);
+    }
+  }, [cityId, toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const changed = {};
+      for (const f of CONFIG_FIELDS) {
+        if (draft[f.key] !== config[f.key]) changed[f.key] = Number(draft[f.key]);
+      }
+      if (Object.keys(changed).length === 0) return toast("Nothing changed");
+      const updated = await api.patch(`/v1/pricing/config/${cityId}`, changed);
+      setConfig(updated);
+      setDraft(updated);
+      toast("Saved — audit-logged, no deploy needed");
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!config) return <div className="card"><div className="muted">Loading…</div></div>;
+
+  return (
+    <div className="card">
+      <h3>City settings — {cityId}</h3>
+      <div className="muted">Every business rule here is live, admin-editable, and audit-logged (see `city_config_events`). Changing it takes effect on the next fare calculation — no deploy.</div>
+      {CONFIG_FIELDS.map((f) => (
+        <div key={f.key}>
+          <label>{f.label}</label>
+          <input
+            type="number" step="0.01" value={draft[f.key] ?? ""}
+            onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
+          />
+        </div>
+      ))}
+      <button className="btn primary" disabled={saving} onClick={save}>Save changes</button>
+    </div>
+  );
+}
+
+// Round 1 stakeholder council, ops pain #2: "KYC verification has an API endpoint and
+// zero UI" -- an admin could not actually use the feature that already existed.
+function DriversPanel() {
+  const toast = useToast();
+  const [drivers, setDrivers] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      setDrivers(await api.get("/v1/admin/drivers"));
+    } catch (e) {
+      toast(e.message);
+    }
+  }, [toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function toggleKyc(driverId, current) {
+    try {
+      await api.patch(`/v1/drivers/${driverId}/kyc`, { verified: !current });
+      load();
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  if (!drivers) return <div className="card"><div className="muted">Loading…</div></div>;
+
+  return (
+    <div className="card">
+      <h3>Drivers ({drivers.length})</h3>
+      <div style={{ maxHeight: 480, overflowY: "auto" }}>
+        <table className="data-table">
+          <thead><tr><th>Name</th><th>City</th><th>Status</th><th>Rating</th><th>KYC</th><th></th></tr></thead>
+          <tbody>
+            {drivers.map((d) => (
+              <tr key={d.driver_id}>
+                <td>{d.name}</td>
+                <td>{d.city_id}</td>
+                <td>{d.status}</td>
+                <td>★ {d.rating_avg.toFixed(1)}</td>
+                <td>{d.kyc_verified ? "✅" : "—"}</td>
+                <td>
+                  <button className="link" onClick={() => toggleKyc(d.driver_id, d.kyc_verified)}>
+                    {d.kyc_verified ? "Revoke" : "Verify"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
