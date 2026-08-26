@@ -7,22 +7,13 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useReconnectingSocket } from "../hooks/useReconnectingSocket";
 import NotificationBell from "../components/NotificationBell";
+import { haversineKm } from "../utils/geo";
 
 const PING_INTERVAL_MS = 3000;
 const TRIP_STORAGE_KEY = "ridehail_driver_current_trip";
 
 function stepToward(from, to, fraction) {
   return { lat: from.lat + (to.lat - from.lat) * fraction, lng: from.lng + (to.lng - from.lng) * fraction };
-}
-
-function haversineKm(lat1, lng1, lat2, lng2) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 export default function DriverPage() {
