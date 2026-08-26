@@ -42,3 +42,15 @@ class MatchingClient:
             )
             resp.raise_for_status()
             return resp.json()
+
+    async def release_claim(self, *, driver_id: str, trip_id: str) -> None:
+        """Called on ACCEPT, REJECT, and every redispatch round that clears a prior
+        offer — see the docstring on the matching-side endpoint for why this must be
+        explicit rather than left to the claim's TTL."""
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(
+                f"{self._base_url}/v1/matching/release-claim",
+                json={"driver_id": driver_id, "trip_id": trip_id},
+                headers=self._system_header(),
+            )
+            resp.raise_for_status()

@@ -44,6 +44,15 @@ class CancelRequest(BaseModel):
     reason: str | None = None
 
 
+class PaymentResultRequest(BaseModel):
+    status: str = Field(pattern="^(SUCCEEDED|FAILED|PAID_PENDING_RETRY_SUCCEEDED)$")
+
+
+class RateAnnotationRequest(BaseModel):
+    rater_role: str = Field(pattern="^(RIDER|DRIVER)$")
+    rater_id: str
+
+
 class AuditEventResponse(BaseModel):
     event_id: str
     from_status: str | None
