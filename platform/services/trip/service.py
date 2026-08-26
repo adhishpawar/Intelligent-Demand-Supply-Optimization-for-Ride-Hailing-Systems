@@ -21,7 +21,7 @@ from libs.geo.cities import city_for, get_city
 from libs.geo.eta import FastEtaEstimator
 from libs.geo.geohash import encode as geohash_encode
 from libs.persistence.unit_of_work import UnitOfWork
-from libs.geo.city_config_repo import get_rate_card
+from libs.geo.city_config_repo import get_dispatch_config, get_rate_card
 from libs.pricing.fare import estimate_fare
 from libs.pricing.surge_reader import read_surge_multiplier
 from libs.pricing.vehicle_type_repo import get_vehicle_type_multiplier
@@ -79,12 +79,20 @@ class TripService:
             # card immediately above.
             vt_multiplier = await get_vehicle_type_multiplier(uow.session, vehicle_type)
             fare_estimate = estimate_fare(rate_card, distance_m, duration_s, surge, vt_multiplier)
+            # Round 12 stakeholder council: matching_deadline_seconds is now
+            # DB-backed and per-city (see libs.geo.city_config_repo.get_
+            # dispatch_config), not the global Settings default -- closes half of
+            # PLAN's own AS-05 gap. Locked in at request time and stored on the
+            # trip row (matching_deadline_at), exactly the same pattern
+            # surge_multiplier already uses (AS-08: a value that must be frozen at
+            # the moment a rider commits, not re-read later).
+            dispatch_cfg = await get_dispatch_config(uow.session, city.city_id)
             trip = await repo.create(
                 rider_id=rider_id, city_id=city.city_id,
                 pickup_lat=pickup[0], pickup_lng=pickup[1], pickup_geohash7=pickup_geohash,
                 drop_lat=drop[0], drop_lng=drop[1], drop_geohash7=geohash_encode(drop[0], drop[1]),
                 fare_estimate=fare_estimate, surge_multiplier=surge,
-                matching_deadline_seconds=self._settings.matching_deadline_seconds,
+                matching_deadline_seconds=dispatch_cfg.matching_deadline_seconds,
                 vehicle_type_requested=vehicle_type,
             )
             trip = await repo.apply_transition(
@@ -131,10 +139,15 @@ class TripService:
 
             offer_fields = {}
             if result["driver_id"]:
+                # Round 12 stakeholder council: offer_ttl_seconds is now DB-backed
+                # and per-city, not the global Settings default -- see
+                # request_ride's matching_deadline_seconds comment above for the
+                # same rationale/pattern (AS-05).
+                dispatch_cfg = await get_dispatch_config(uow.session, trip.city_id)
                 offer_fields = {
                     "current_offer_driver_id": result["driver_id"],
                     "current_offer_id": new_id(),
-                    "current_offer_expires_at": utcnow() + timedelta(seconds=self._settings.offer_ttl_seconds),
+                    "current_offer_expires_at": utcnow() + timedelta(seconds=dispatch_cfg.offer_ttl_seconds),
                 }
             else:
                 offer_fields = {"current_offer_driver_id": None, "current_offer_id": None, "current_offer_expires_at": None}

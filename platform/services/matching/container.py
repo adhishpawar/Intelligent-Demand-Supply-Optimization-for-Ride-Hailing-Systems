@@ -45,7 +45,7 @@ def get_dispatcher_for_city(city_id: str, settings: Settings) -> Dispatcher:
     if city_id not in _dispatchers:
         city: CityConfig = get_city(city_id)
         index = DriverIndexRepository(_redis)
-        claims = DriverClaimService(_redis, settings.claim_ttl_seconds)
+        claims = DriverClaimService(_redis)
         scorer = WeightedScoreStrategy(city)
         _dispatchers[city_id] = Dispatcher(index, claims, scorer)
     return _dispatchers[city_id]

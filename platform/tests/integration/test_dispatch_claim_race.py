@@ -82,7 +82,12 @@ async def test_two_concurrent_dispatches_claim_the_same_driver_exactly_once() ->
         await index.ingest_ping(driver_id, "pune", PUNE_LAT + 0.001, PUNE_LNG + 0.001, 0, 0, __import__("time").time())
 
         city = get_city("pune")
-        claims = DriverClaimService(redis, settings.claim_ttl_seconds)
+        # Round 12: claim_ttl_seconds moved from constructor-time to a per-call
+        # dispatch_once(claim_ttl_seconds=...) argument -- see claim.py's
+        # try_claim docstring. dispatch_once's default (25) matches
+        # settings.claim_ttl_seconds's old default, so this test's behavior is
+        # unchanged; not passed explicitly since this test isn't exercising TTL.
+        claims = DriverClaimService(redis)
         scorer = WeightedScoreStrategy(city)
         dispatcher = Dispatcher(index, claims, scorer)
 

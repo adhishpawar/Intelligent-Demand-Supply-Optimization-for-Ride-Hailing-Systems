@@ -209,6 +209,7 @@ export default function AdminPage() {
           {view === "settings" && (
             <>
               <CityConfigPanel cityId={cityId} />
+              <DispatchConfigPanel cityId={cityId} />
               <VehicleMultipliersPanel />
             </>
           )}
@@ -342,6 +343,75 @@ function CityConfigPanel({ cityId }) {
           <label>{f.label}</label>
           <input
             type="number" step="0.01" value={draft[f.key] ?? ""}
+            onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
+          />
+        </div>
+      ))}
+      <button className="btn primary" disabled={saving} onClick={save}>Save changes</button>
+    </div>
+  );
+}
+
+const DISPATCH_CONFIG_FIELDS = [
+  { key: "offer_ttl_seconds", label: "Offer TTL (seconds)" },
+  { key: "claim_ttl_seconds", label: "Claim TTL (seconds)" },
+  { key: "matching_deadline_seconds", label: "Matching deadline (seconds)" },
+  { key: "candidate_radius_km", label: "Candidate radius (km)" },
+  { key: "candidate_count", label: "Candidate count" },
+];
+
+// Round 12 stakeholder council: closes (most of) PLAN's own AS-05 gap -- "all are
+// per-city config, not constants," open since Phase 0, while its sibling AS-06
+// (commission/cancellation fee, right below it in the same table) was closed by
+// Round 1's CityConfigPanel above. Same shape, different field set.
+function DispatchConfigPanel({ cityId }) {
+  const toast = useToast();
+  const [config, setConfig] = useState(null);
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const c = await api.get(`/v1/pricing/dispatch-config/${cityId}`);
+      setConfig(c);
+      setDraft(c);
+    } catch (e) {
+      toast(e.message);
+    }
+  }, [cityId, toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const changed = {};
+      for (const f of DISPATCH_CONFIG_FIELDS) {
+        if (draft[f.key] !== config[f.key]) changed[f.key] = Number(draft[f.key]);
+      }
+      if (Object.keys(changed).length === 0) return toast("Nothing changed");
+      const updated = await api.patch(`/v1/pricing/dispatch-config/${cityId}`, changed);
+      setConfig(updated);
+      setDraft(updated);
+      toast("Saved — audit-logged, no deploy needed");
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!config) return <div className="card"><div className="muted">Loading…</div></div>;
+
+  return (
+    <div className="card">
+      <h3>Dispatch tuning — {cityId}</h3>
+      <div className="muted">How long an offer/claim lives, how long matching keeps trying, and how wide/deep the candidate search goes. Live, admin-editable, audit-logged (see `city_config_events`) -- takes effect on the next dispatch, no deploy. `max_dispatch_attempts` stays a global setting for now (see PROGRESS.md Round 12).</div>
+      {DISPATCH_CONFIG_FIELDS.map((f) => (
+        <div key={f.key}>
+          <label>{f.label}</label>
+          <input
+            type="number" step={f.key === "candidate_radius_km" ? "0.1" : "1"} value={draft[f.key] ?? ""}
             onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
           />
         </div>
