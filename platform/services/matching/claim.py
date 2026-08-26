@@ -32,14 +32,23 @@ class DriverClaimError(Exception):
 
 
 class DriverClaimService:
-    def __init__(self, redis: Redis, claim_ttl_seconds: int) -> None:
+    def __init__(self, redis: Redis) -> None:
         self._redis = redis
-        self._ttl = claim_ttl_seconds
 
-    async def try_claim(self, driver_id: str, trip_id: str) -> bool:
-        """Atomic compare-and-claim. Returns True iff this call won the claim."""
+    async def try_claim(self, driver_id: str, trip_id: str, ttl_seconds: int) -> bool:
+        """Atomic compare-and-claim. Returns True iff this call won the claim.
+
+        Round 12 stakeholder council: `ttl_seconds` moved from a constructor-time
+        value to a per-call one -- `claim_ttl_seconds` is now DB-backed and
+        per-city (AS-05), but `get_dispatcher_for_city` (services/matching/
+        container.py) caches one `Dispatcher`/`DriverClaimService` per city
+        forever. A constructor-baked TTL would have been read once at first
+        dispatch and never again, silently defeating the whole "admin changes it,
+        takes effect immediately" promise this DB-config pattern exists for. A
+        `Redis SET ... EX` is inherently per-call anyway -- this only makes the
+        class honest about that."""
         key = f"{_CLAIM_KEY_PREFIX}{driver_id}"
-        return bool(await self._redis.set(key, trip_id, nx=True, ex=self._ttl))
+        return bool(await self._redis.set(key, trip_id, nx=True, ex=ttl_seconds))
 
     async def release(self, driver_id: str, trip_id: str) -> None:
         """Releases the claim ONLY if it's still held for this exact trip (a Lua

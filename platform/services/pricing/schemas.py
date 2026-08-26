@@ -55,6 +55,27 @@ class CityConfigUpdateRequest(BaseModel):
     cancellation_fee: float | None = Field(default=None, ge=0)
 
 
+class DispatchConfigResponse(BaseModel):
+    """Round 12 stakeholder council: closes (most of) PLAN's own AS-05 gap --
+    dispatch tuning as DB-backed, admin-editable, audited config, same pattern as
+    CityConfigResponse above."""
+
+    city_id: str
+    offer_ttl_seconds: int
+    claim_ttl_seconds: int
+    matching_deadline_seconds: int
+    candidate_radius_km: float
+    candidate_count: int
+
+
+class DispatchConfigUpdateRequest(BaseModel):
+    offer_ttl_seconds: int | None = Field(default=None, ge=5, le=120)
+    claim_ttl_seconds: int | None = Field(default=None, ge=5, le=300)
+    matching_deadline_seconds: int | None = Field(default=None, ge=10, le=600)
+    candidate_radius_km: float | None = Field(default=None, gt=0, le=50)
+    candidate_count: int | None = Field(default=None, ge=1, le=200)
+
+
 class VehicleTypeMultipliersResponse(BaseModel):
     """Round 8 stakeholder council: closes Round 7's "REAL-LITE, hardcoded" note --
     same DB-backed/admin-editable/audited pattern as CityConfigResponse."""

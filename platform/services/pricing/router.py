@@ -6,7 +6,13 @@ from redis.asyncio import Redis
 from libs.common.errors import ConflictError
 from libs.common.ids import utcnow
 from libs.geo.cities import CITIES, city_for
-from libs.geo.city_config_repo import get_rate_card, get_rate_card_dict, update_rate_card
+from libs.geo.city_config_repo import (
+    get_dispatch_config_dict,
+    get_rate_card,
+    get_rate_card_dict,
+    update_dispatch_config,
+    update_rate_card,
+)
 from libs.pricing.vehicle_type_repo import (
     get_vehicle_type_multiplier,
     get_vehicle_type_multipliers_dict,
@@ -22,6 +28,8 @@ from services.pricing.container import get_redis, get_session
 from services.pricing.schemas import (
     CityConfigResponse,
     CityConfigUpdateRequest,
+    DispatchConfigResponse,
+    DispatchConfigUpdateRequest,
     EstimateRequest,
     EstimateResponse,
     SurgeResponse,
@@ -102,6 +110,34 @@ async def update_city_config(
         raise ConflictError("unknown city_id", city_id=city_id)
     updated = await update_rate_card(session, city_id, body.model_dump(exclude_none=True), principal.user_id)
     return CityConfigResponse(city_id=city_id, **updated)
+
+
+# --- Round 12 stakeholder council: closes (most of) PLAN's own AS-05 gap --
+# dispatch tuning (offer/claim TTLs, matching deadline, candidate radius/count) as
+# real, DB-backed, admin-editable, audited config, same pattern as the rate card
+# immediately above. max_dispatch_attempts deliberately stays a global Settings
+# value -- see libs/geo/cities.py's DispatchConfig docstring for why. ---
+
+@router.get("/v1/pricing/dispatch-config/{city_id}", response_model=DispatchConfigResponse)
+async def get_dispatch_config_endpoint(
+    city_id: str, _principal: Principal = Depends(get_principal), session=Depends(get_session),
+):
+    if city_id not in CITIES:
+        raise ConflictError("unknown city_id", city_id=city_id)
+    cfg = await get_dispatch_config_dict(session, city_id)
+    return DispatchConfigResponse(city_id=city_id, **cfg)
+
+
+@router.patch("/v1/pricing/dispatch-config/{city_id}", response_model=DispatchConfigResponse)
+async def update_dispatch_config_endpoint(
+    city_id: str, body: DispatchConfigUpdateRequest,
+    principal: Principal = Depends(require_roles(Role.ADMIN)),
+    session=Depends(get_session),
+):
+    if city_id not in CITIES:
+        raise ConflictError("unknown city_id", city_id=city_id)
+    updated = await update_dispatch_config(session, city_id, body.model_dump(exclude_none=True), principal.user_id)
+    return DispatchConfigResponse(city_id=city_id, **updated)
 
 
 # --- Round 8 stakeholder council: closes Round 7's "REAL-LITE, hardcoded" note on

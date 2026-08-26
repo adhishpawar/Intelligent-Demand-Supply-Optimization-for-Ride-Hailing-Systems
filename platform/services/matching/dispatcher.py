@@ -48,6 +48,7 @@ class Dispatcher:
         count: int,
         at: datetime,
         vehicle_type: str = "SEDAN",
+        claim_ttl_seconds: int = 25,
     ) -> DispatchResult:
         raw_candidates = await self._index.search_with_neighbors(
             city.city_id, city.neighbors, pickup_lat, pickup_lng, radius_km, count
@@ -75,7 +76,7 @@ class Dispatcher:
         ranked = await self._scorer.rank(candidate_infos, pickup_lat, pickup_lng, at)
 
         for scored in ranked:
-            won = await self._claims.try_claim(scored.driver_id, trip_id)
+            won = await self._claims.try_claim(scored.driver_id, trip_id, claim_ttl_seconds)
             if won:
                 return DispatchResult(scored.driver_id, scored.eta_seconds, scored.distance_m, len(candidate_infos))
             # someone else's dispatch cycle claimed this driver a moment ago -- try the next-ranked candidate.

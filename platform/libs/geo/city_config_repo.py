@@ -10,10 +10,18 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.geo.cities import RateCard, get_city
+from libs.geo.cities import DispatchConfig, RateCard, get_city
 
 RATE_CARD_FIELDS = (
     "base_fare", "per_km_rate", "per_min_rate", "booking_fee", "surge_cap", "commission_pct", "cancellation_fee",
+)
+
+# Round 12 stakeholder council: same DB-backed/admin-editable/audited pattern as
+# RATE_CARD_FIELDS, applied to the dispatch-tuning half of AS-05. Reuses
+# city_config_events for the audit trail -- same table, same "never silently
+# change config" principle, just a different set of field names.
+DISPATCH_CONFIG_FIELDS = (
+    "offer_ttl_seconds", "claim_ttl_seconds", "matching_deadline_seconds", "candidate_radius_km", "candidate_count",
 )
 
 
@@ -43,6 +51,67 @@ async def update_rate_card(session: AsyncSession, city_id: str, updates: dict, c
     ledger and trip_events)."""
     current = await get_rate_card_dict(session, city_id)
     changed = {k: v for k, v in updates.items() if k in RATE_CARD_FIELDS and v is not None and v != current.get(k)}
+    if not changed:
+        return current
+
+    exists = (await session.execute(text("SELECT 1 FROM city_configs WHERE city_id = :id"), {"id": city_id})).first()
+    if exists:
+        set_clause = ", ".join(f"{k} = :{k}" for k in changed)
+        await session.execute(
+            text(f"UPDATE city_configs SET {set_clause}, updated_at = now(), updated_by = :changed_by WHERE city_id = :city_id"),
+            {**changed, "changed_by": changed_by, "city_id": city_id},
+        )
+    else:
+        merged = {**current, **changed}
+        cols = ", ".join(["city_id", *merged.keys()])
+        placeholders = ", ".join([":city_id", *[f":{k}" for k in merged]])
+        await session.execute(
+            text(f"INSERT INTO city_configs ({cols}, updated_by) VALUES ({placeholders}, :changed_by)"),
+            {**merged, "city_id": city_id, "changed_by": changed_by},
+        )
+
+    for field, new_value in changed.items():
+        await session.execute(
+            text(
+                "INSERT INTO city_config_events (city_id, field, old_value, new_value, changed_by) "
+                "VALUES (:city_id, :field, :old_value, :new_value, :changed_by)"
+            ),
+            {"city_id": city_id, "field": field, "old_value": current.get(field), "new_value": new_value, "changed_by": changed_by},
+        )
+    await session.commit()
+    return {**current, **changed}
+
+
+async def get_dispatch_config(session: AsyncSession, city_id: str) -> DispatchConfig:
+    row = (
+        await session.execute(
+            text(
+                "SELECT offer_ttl_seconds, claim_ttl_seconds, matching_deadline_seconds, "
+                "candidate_radius_km, candidate_count FROM city_configs WHERE city_id = :id"
+            ),
+            {"id": city_id},
+        )
+    ).mappings().first()
+    if row is None:
+        return get_city(city_id).dispatch_config  # defensive fallback -- should not normally be hit post-seed
+    return DispatchConfig(
+        offer_ttl_seconds=int(row["offer_ttl_seconds"]),
+        claim_ttl_seconds=int(row["claim_ttl_seconds"]),
+        matching_deadline_seconds=int(row["matching_deadline_seconds"]),
+        candidate_radius_km=float(row["candidate_radius_km"]),
+        candidate_count=int(row["candidate_count"]),
+    )
+
+
+async def get_dispatch_config_dict(session: AsyncSession, city_id: str) -> dict:
+    cfg = await get_dispatch_config(session, city_id)
+    return {f: getattr(cfg, f) for f in DISPATCH_CONFIG_FIELDS}
+
+
+async def update_dispatch_config(session: AsyncSession, city_id: str, updates: dict, changed_by: str | None) -> dict:
+    """Same upsert-plus-per-field-audit-event shape as update_rate_card."""
+    current = await get_dispatch_config_dict(session, city_id)
+    changed = {k: v for k, v in updates.items() if k in DISPATCH_CONFIG_FIELDS and v is not None and v != current.get(k)}
     if not changed:
         return current
 

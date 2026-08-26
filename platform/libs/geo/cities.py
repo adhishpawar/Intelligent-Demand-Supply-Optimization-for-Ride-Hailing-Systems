@@ -42,6 +42,28 @@ class RateCard:
 
 
 @dataclass(frozen=True)
+class DispatchConfig:
+    """Round 12 stakeholder council: closes (most of) PLAN's own AS-05 gap --
+    "MAX_DISPATCH_ATTEMPTS = 3, offer TTL 15s, claim TTL 25s, overall matching
+    deadline 90s ... all are per-city config, not constants" -- open since Phase 0,
+    while its sibling AS-06 (commission/cancellation fee) was closed in Round 1.
+    These defaults are the fallback if a city has no `city_configs` row yet, mirroring
+    `RateCard`'s own fallback role -- `libs.geo.city_config_repo.get_dispatch_config`
+    is the live, DB-backed, admin-editable path every real reader goes through.
+
+    `max_dispatch_attempts` deliberately stays a global `Settings` value, not a field
+    here -- it's read at every one of TripService's 15+ `apply_transition` call
+    sites, and making it per-city would mean touching all of them; see
+    PROGRESS.md Round 12 for why that's a deliberate, documented partial closure."""
+
+    offer_ttl_seconds: int = 15
+    claim_ttl_seconds: int = 25
+    matching_deadline_seconds: int = 90
+    candidate_radius_km: float = 3.0
+    candidate_count: int = 20
+
+
+@dataclass(frozen=True)
 class SpeedProfile:
     """Feeds the pure-CPU FastEtaEstimator (PLAN amendment AM-01) — no network call."""
 
@@ -61,6 +83,7 @@ class CityConfig:
     neighbors: tuple[str, ...] = field(default_factory=tuple)
     rate_card: RateCard = field(default_factory=lambda: RateCard(60.0, 12.0, 1.5, 5.0))
     speed_profile: SpeedProfile = field(default_factory=SpeedProfile)
+    dispatch_config: DispatchConfig = field(default_factory=DispatchConfig)
 
 
 # Seed registry — GAP AS-09: Pune + Mumbai chosen specifically so they are wired as
