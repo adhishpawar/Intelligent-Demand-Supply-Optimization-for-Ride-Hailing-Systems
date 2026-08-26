@@ -40,6 +40,7 @@ export default function RiderPage() {
   const [comment, setComment] = useState("");
   const [driverInfo, setDriverInfo] = useState(null);
   const [driverDistanceKm, setDriverDistanceKm] = useState(null);
+  const [cancellationFee, setCancellationFee] = useState(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -168,6 +169,25 @@ export default function RiderPage() {
     return () => { cancelled = true; };
   }, [trip?.driver_id]);
 
+  // Round 13 stakeholder council: closes a Round 1 deferred item -- the cancel
+  // confirmation dialog showed a generic "a fee may apply" warning rather than the
+  // actual number, because showing it would have needed a new rider-facing
+  // endpoint at the time. Round 1's own admin city-config panel already exposes
+  // GET /v1/pricing/config/{city_id} (ALL_AUTH, not admin-only) to every
+  // authenticated role -- no new endpoint needed after all, just reading one that
+  // already existed for a different purpose.
+  useEffect(() => {
+    if (!trip?.city_id || !trip?.driver_id) {
+      setCancellationFee(null);
+      return;
+    }
+    let cancelled = false;
+    api.get(`/v1/pricing/config/${trip.city_id}`).then((cfg) => {
+      if (!cancelled) setCancellationFee(cfg.cancellation_fee);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [trip?.city_id, trip?.driver_id]);
+
   // Live position push, over a self-reconnecting socket (PLAN §5.1 never-cut tier:
   // "WebSocket reconnect/backfill"). `onOpen` re-polls immediately on every
   // (re)connect — the equivalent of the driver-side offer catch-up, applied here to
@@ -253,7 +273,7 @@ export default function RiderPage() {
               stars={stars} setStars={setStars} comment={comment} setComment={setComment}
               onSubmitRating={submitRating} liveConnected={trackerConnected} driverInfo={driverInfo}
               showCancelConfirm={showCancelConfirm} setShowCancelConfirm={setShowCancelConfirm}
-              driverDistanceKm={driverDistanceKm}
+              driverDistanceKm={driverDistanceKm} cancellationFee={cancellationFee}
             />
           )}
         </div>
@@ -312,7 +332,7 @@ function BookingPanel({ pickup, drop, estimate, onReset, onRequest, vehicleType,
 
 function TripPanel({
   trip, status, onCancel, onBookAnother, stars, setStars, comment, setComment, onSubmitRating, liveConnected,
-  driverInfo, showCancelConfirm, setShowCancelConfirm, driverDistanceKm,
+  driverInfo, showCancelConfirm, setShowCancelConfirm, driverDistanceKm, cancellationFee,
 }) {
   if (!trip) return <div className="card"><div className="muted">Loading trip…</div></div>;
 
@@ -371,7 +391,14 @@ function TripPanel({
       )}
       {showCancelConfirm && (
         <div className="confirm-inline">
-          <div>Cancel this ride?{driverAssigned ? " A cancellation fee may apply since a driver is already on the way." : ""}</div>
+          <div>
+            Cancel this ride?
+            {driverAssigned && (
+              cancellationFee != null
+                ? ` A cancellation fee of ₹${cancellationFee.toFixed(2)} will apply since a driver is already on the way.`
+                : " A cancellation fee may apply since a driver is already on the way."
+            )}
+          </div>
           <div className="row" style={{ marginTop: 10 }}>
             <button className="btn ghost" onClick={() => setShowCancelConfirm(false)}>Keep ride</button>
             <button className="btn danger" onClick={() => { setShowCancelConfirm(false); onCancel(); }}>Yes, cancel</button>
