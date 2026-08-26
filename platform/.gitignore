@@ -1,0 +1,26 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Downloaded native infra binaries (PLAN §4.4/pivot note in PROGRESS.md) — large,
+# re-downloadable, not source. pgdata/pglogs are runtime state, never source either.
+infra/native/*.zip
+infra/native/*.tgz
+infra/native/pg/
+infra/native/pgdata/
+infra/native/pglogs/
+infra/native/redis/*.exe
+infra/native/redis/*.pdb
+infra/native/redis/*.dll
+infra/native/redis/00-RELEASENOTES
+infra/native/redis/*.txt
+infra/native/kafka/
+
+# runtime logs
+*.log
+logs/
+
+# env
+.env
