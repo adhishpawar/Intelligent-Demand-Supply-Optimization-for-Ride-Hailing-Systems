@@ -23,6 +23,7 @@ export default function RiderPage() {
   const driverMarkerRef = useRef(null);
   const pickModeRef = useRef("pickup");
   const pollTimerRef = useRef(null);
+  const prevStatusRef = useRef(null);
 
   const [pickup, setPickup] = useState(null);
   const [drop, setDrop] = useState(null);
@@ -171,6 +172,33 @@ export default function RiderPage() {
   });
 
   const status = trip?.status;
+
+  // Round 2 stakeholder council, rider pain: status changes (driver arrived, trip
+  // started, trip finished) were only ever visible by noticing the status pill had
+  // silently changed text -- no active, attention-grabbing signal, unlike the
+  // "your driver has arrived" push notification every real ride-hailing app sends.
+  // Resets per tripId (via the tripId-keyed cleanup below) so a page refresh loading
+  // an in-flight trip doesn't retroactively announce the status it loads at.
+  useEffect(() => {
+    prevStatusRef.current = null;
+  }, [tripId]);
+
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    if (status && prev && prev !== status) {
+      const messages = {
+        DRIVER_ASSIGNED: "A driver has been assigned to your ride!",
+        DRIVER_ARRIVED: "Your driver has arrived at the pickup point!",
+        IN_PROGRESS: "Trip started — enjoy your ride!",
+        COMPLETED: "You've arrived. Calculating your fare…",
+        NO_DRIVER_FOUND: "No drivers were available nearby right now.",
+        CANCELLED_BY_DRIVER: "Your driver cancelled this ride.",
+        CANCELLED_BY_SYSTEM: "This ride was cancelled by the system.",
+      };
+      if (messages[status]) toast(messages[status]);
+    }
+    if (status) prevStatusRef.current = status;
+  }, [status, toast]);
 
   return (
     <div id="app">

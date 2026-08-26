@@ -276,6 +276,8 @@ class TripService:
         await publish_trip_update(self._redis, trip.trip_id, {"status": trip.status, "fare_final": trip.fare_final})
         from services.trip.location_client import set_driver_online_again
         await set_driver_online_again(self._settings, trip.driver_id)
+        from services.trip.identity_client import mark_ride_completed
+        await mark_ride_completed(self._settings, trip.driver_id)
         return trip
 
     async def mark_payment_result(self, trip_id: str, succeeded: bool) -> TripRecord:

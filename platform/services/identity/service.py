@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import random
 
-from libs.common.errors import ConflictError, NotFoundError, UnauthorizedError
+from libs.common.errors import ConflictError, NotFoundError, RateLimitedError, UnauthorizedError
 from libs.security.jwt_tokens import create_access_token, create_refresh_token, decode_token
 from libs.security.principal import Principal, Role
 from services.identity.repository import OtpRepository, UserRepository
@@ -27,6 +27,12 @@ class IdentityService:
         access_ttl: int,
         refresh_ttl: int,
         dev_mode: bool,
+        # Round 2 stakeholder council (tech lead): OTP-request volume per phone was
+        # completely unbounded -- a real SMS-cost-abuse / inbox-flood vector.
+        # Settings-backed (see libs.common.config), same tunable-per-deployment
+        # pattern as offer_ttl_seconds, not a hardcoded module constant.
+        otp_rate_limit_max_requests: int = 5,
+        otp_rate_limit_window_seconds: int = 600,
     ) -> None:
         self._users = users
         self._otps = otps
@@ -34,6 +40,8 @@ class IdentityService:
         self._jwt_secret = jwt_secret
         self._jwt_algorithm = jwt_algorithm
         self._access_ttl = access_ttl
+        self._otp_rate_limit_max_requests = otp_rate_limit_max_requests
+        self._otp_rate_limit_window_seconds = otp_rate_limit_window_seconds
         self._refresh_ttl = refresh_ttl
         self._dev_mode = dev_mode
 
@@ -71,6 +79,13 @@ class IdentityService:
         user = await self._users.get_by_phone(phone)
         if user is None:
             raise NotFoundError("no user registered with this phone number", phone=phone)
+
+        recent = await self._otps.count_recent(phone, self._otp_rate_limit_window_seconds)
+        if recent >= self._otp_rate_limit_max_requests:
+            raise RateLimitedError(
+                "too many OTP requests for this phone number -- please wait before retrying",
+                retry_after_seconds=self._otp_rate_limit_window_seconds,
+            )
 
         code = f"{random.randint(0, 999999):06d}"
         await self._otps.store_code(phone, code, OTP_TTL_SECONDS)
@@ -130,3 +145,6 @@ class IdentityService:
 
     async def set_kyc(self, driver_id: str, verified: bool) -> None:
         await self._users.set_kyc_verified(driver_id, verified)
+
+    async def increment_rides_completed(self, driver_id: str) -> None:
+        await self._users.increment_rides_completed(driver_id)

@@ -132,3 +132,15 @@ async def update_kyc(
     await svc.set_kyc(driver_id, body.verified)
     profile = await svc.get_driver_profile(driver_id)
     return DriverProfileResponse(**profile.__dict__)
+
+
+@router.post("/v1/drivers/{driver_id}/complete-ride", status_code=204)
+async def complete_ride(
+    driver_id: str,
+    # Internal system-to-system call only (Trip -> Identity, mirroring
+    # services/trip/location_client.py's set_driver_online_again) -- not exposed
+    # through the gateway, so admin-role-gated the same way that pattern already is.
+    principal: Principal = Depends(require_roles(Role.ADMIN)),
+    svc: IdentityService = Depends(get_identity_service),
+):
+    await svc.increment_rides_completed(driver_id)

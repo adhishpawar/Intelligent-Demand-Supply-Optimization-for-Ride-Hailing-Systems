@@ -40,6 +40,7 @@ export default function DriverPage() {
   const [tripId, setTripId] = useState(() => sessionStorage.getItem(TRIP_STORAGE_KEY));
   const [trip, setTrip] = useState(null);
   const [earnings, setEarnings] = useState(0);
+  const [myStats, setMyStats] = useState(null); // {rating_avg, acceptance_rate, rides_completed}
 
   // ---------- Location simulation ----------
   // A driver sitting at a desk has no real GPS movement to report. Rather than fake
@@ -94,6 +95,40 @@ export default function DriverPage() {
     return () => clearInterval(pingTimerRef.current);
   }, [online, sendPing]);
 
+  // ---------- Own stats (rating, acceptance rate, rides completed) ----------
+  // Round 2 stakeholder council, driver pain: a driver's rating and acceptance rate
+  // materially affect their standing on a real platform (deactivation risk, priority
+  // matching) yet were completely invisible in this console -- the driver had no way
+  // to know where they stood short of asking a rider directly. Both fields already
+  // existed server-side (rating_avg on /v1/users/me, acceptance_rate + rides_completed
+  // on /v1/drivers/{id}) and were already self-readable under existing RBAC -- purely
+  // a display gap, not a new endpoint.
+  const fetchMyStats = useCallback(async () => {
+    try {
+      const [profile, driverInfo] = await Promise.all([
+        api.get("/v1/users/me"),
+        api.get(`/v1/drivers/${userId}`),
+      ]);
+      setMyStats({
+        rating_avg: profile.rating_avg,
+        acceptance_rate: driverInfo.acceptance_rate,
+        rides_completed: driverInfo.rides_completed,
+      });
+    } catch {
+      /* non-critical -- stats panel just stays hidden */
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    fetchMyStats();
+  }, [fetchMyStats]);
+
+  // Refresh stats right after a trip completes, since rides_completed / rating_avg
+  // may have just changed.
+  useEffect(() => {
+    if (trip?.status === "COMPLETED") fetchMyStats();
+  }, [trip?.status, fetchMyStats]);
+
   // ---------- Offer WS (self-reconnecting) + catch-up ----------
   // Redis pub/sub (the live push) has no replay: if this WS connects AFTER an offer
   // was already published (a reload, a network blip, or a reconnect after a drop),
@@ -117,17 +152,26 @@ export default function DriverPage() {
 
   // Offer countdown (never an indefinite spinner -- PLAN §6.4 D2's rule applies
   // symmetrically on the driver side: the offer clearly expires visibly).
+  //
+  // Round 2 stakeholder council, driver pain: when the countdown hit zero the modal
+  // just vanished with no explanation -- felt like the app glitched, not like a
+  // deliberate timeout. (A future "someone else took it" server push for the
+  // supersede/redispatch case is a separate, larger change -- deferred, see
+  // PROGRESS.md Round 2 -- this covers the dominant case: not responding in time.)
   useEffect(() => {
     if (!offer) return;
     const tick = () => {
       const remaining = Math.max(0, Math.round((new Date(offer.expires_at).getTime() - Date.now()) / 1000));
       setCountdown(remaining);
-      if (remaining <= 0) setOffer(null);
+      if (remaining <= 0) {
+        setOffer(null);
+        toast("Offer expired — you didn't respond in time.");
+      }
     };
     tick();
     const id = setInterval(tick, 500);
     return () => clearInterval(id);
-  }, [offer]);
+  }, [offer, toast]);
 
   async function respondToOffer(action) {
     const offerTripId = offer.trip_id;
@@ -211,9 +255,27 @@ export default function DriverPage() {
             <div className="muted" style={{ marginTop: 10 }}>{online ? "Online — pinging location every 3s" : "Offline — not matchable"}</div>
           </div>
 
-          <div className="stat-tile" style={{ marginBottom: 14 }}>
-            <div className="value">₹{earnings.toFixed(2)}</div>
-            <div className="label">Session earnings</div>
+          <div className="grid-stats" style={{ marginBottom: 14 }}>
+            <div className="stat-tile">
+              <div className="value">₹{earnings.toFixed(2)}</div>
+              <div className="label">Session earnings</div>
+            </div>
+            {myStats && (
+              <>
+                <div className="stat-tile">
+                  <div className="value">★ {myStats.rating_avg.toFixed(2)}</div>
+                  <div className="label">Your rating</div>
+                </div>
+                <div className="stat-tile">
+                  <div className="value">{Math.round(myStats.acceptance_rate * 100)}%</div>
+                  <div className="label">Acceptance rate</div>
+                </div>
+                <div className="stat-tile">
+                  <div className="value">{myStats.rides_completed}</div>
+                  <div className="label">Rides completed</div>
+                </div>
+              </>
+            )}
           </div>
 
           {trip && <ActiveTripCard trip={trip} onAdvance={advance} onCancel={driverCancel} />}

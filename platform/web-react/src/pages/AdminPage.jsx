@@ -10,6 +10,13 @@ import { useToast } from "../context/ToastContext";
 // Everything here reads live off the real Redis geo index and the real Postgres
 // trip/ledger tables — no separate analytics pipeline, no mocked numbers.
 
+const TERMINAL_STATUSES = ["PAID", "RATED", "NO_DRIVER_FOUND", "EXPIRED", "CANCELLED_BY_RIDER", "CANCELLED_BY_DRIVER", "CANCELLED_BY_SYSTEM"];
+const ALL_STATUSES = [
+  "REQUESTED", "MATCHING", "DRIVER_ASSIGNED", "DRIVER_ARRIVING", "DRIVER_ARRIVED", "IN_PROGRESS",
+  "COMPLETED", "PAID_PENDING", "PAID", "RATED", "NO_DRIVER_FOUND",
+  "CANCELLED_BY_RIDER", "CANCELLED_BY_DRIVER", "CANCELLED_BY_SYSTEM", "EXPIRED",
+];
+
 export default function AdminPage() {
   const { userId, logout } = useAuth();
   const toast = useToast();
@@ -20,6 +27,7 @@ export default function AdminPage() {
   const [view, setView] = useState("trips"); // "trips" | "settings" | "drivers"
   const [heatmap, setHeatmap] = useState({ drivers: [], online_count: 0 });
   const [trips, setTrips] = useState([]);
+  const [tripFilter, setTripFilter] = useState("ALL"); // "ALL" | "ACTIVE" | "TERMINAL" | one exact status
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [audit, setAudit] = useState([]);
   const [ledger, setLedger] = useState(null);
@@ -86,7 +94,19 @@ export default function AdminPage() {
     }
   }
 
-  const activeTrips = trips.filter((t) => !["PAID", "RATED", "NO_DRIVER_FOUND", "EXPIRED", "CANCELLED_BY_RIDER", "CANCELLED_BY_DRIVER", "CANCELLED_BY_SYSTEM"].includes(t.status)).length;
+  const activeTrips = trips.filter((t) => !TERMINAL_STATUSES.includes(t.status)).length;
+
+  // Round 2 stakeholder council, admin/tech-lead pain: the trip feed was an
+  // unfilterable flat list -- fine for a demo's handful of trips, but a real ops
+  // team hunting for e.g. one stuck trip among hundreds needs to narrow by status.
+  // Client-side filter over the already-fetched feed -- no new endpoint needed, the
+  // full recent-trips list is already being polled every 3s.
+  const filteredTrips = trips.filter((t) => {
+    if (tripFilter === "ALL") return true;
+    if (tripFilter === "ACTIVE") return !TERMINAL_STATUSES.includes(t.status);
+    if (tripFilter === "TERMINAL") return TERMINAL_STATUSES.includes(t.status);
+    return t.status === tripFilter;
+  });
 
   return (
     <div id="app">
@@ -121,12 +141,21 @@ export default function AdminPage() {
               <TripDetail trip={selectedTrip} audit={audit} ledger={ledger} onBack={() => setSelectedTrip(null)} />
             ) : (
               <div className="card">
-                <h3>Recent trips (live)</h3>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <h3 style={{ margin: 0 }}>Recent trips (live)</h3>
+                  <select value={tripFilter} onChange={(e) => setTripFilter(e.target.value)} style={{ width: "auto", padding: "6px 8px" }}>
+                    <option value="ALL">All ({trips.length})</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="TERMINAL">Terminal</option>
+                    {ALL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                {filteredTrips.length === 0 && <div className="muted">No trips match this filter.</div>}
                 <div style={{ maxHeight: 480, overflowY: "auto" }}>
                   <table className="data-table">
                     <thead><tr><th>Trip</th><th>Status</th><th>Fare</th></tr></thead>
                     <tbody>
-                      {trips.map((t) => (
+                      {filteredTrips.map((t) => (
                         <tr key={t.trip_id} style={{ cursor: "pointer" }} onClick={() => selectTrip(t)}>
                           <td>{t.trip_id.slice(0, 8)}…</td>
                           <td><StatusPill status={t.status} /></td>
