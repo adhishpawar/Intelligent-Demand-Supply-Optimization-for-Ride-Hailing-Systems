@@ -22,7 +22,13 @@ def user_channel(user_id: str) -> str:
 
 TEMPLATES = {
     "ride.requested": ("Ride requested", "Looking for a nearby driver..."),
-    "ride.assigned": ("Driver assigned", "Your driver is on the way."),
+    # Round 11 stakeholder council: this used to be sent ONLY to the driver (see
+    # _recipients_for's history) with rider-facing wording ("Your driver is on the
+    # way") -- a driver reading a notification about their own assignment phrased
+    # in the second person as if they were the rider. Now sent to both (rider_id
+    # was missing from the event until this round), so the wording is neutral --
+    # reads sensibly whether you're the rider or the driver on this trip.
+    "ride.assigned": ("Driver assigned", "A driver has been matched to this ride."),
     # Round 10 stakeholder council: {fare_final} rendered whatever str(float) gave --
     # no currency symbol, no guaranteed 2-decimal formatting. Cosmetic on its own,
     # but worth fixing alongside ride.cancelled below.
@@ -63,13 +69,11 @@ class NotificationFanout:
             )
 
     def _recipients_for(self, topic: str, payload: dict) -> list[str]:
-        if topic in ("ride.requested", "ride.completed", "ride.cancelled"):
+        if topic in ("ride.requested", "ride.assigned", "ride.completed", "ride.cancelled"):
             ids = [payload.get("rider_id")]
             if payload.get("driver_id"):
                 ids.append(payload["driver_id"])
             return [i for i in ids if i]
-        if topic == "ride.assigned":
-            return [payload["driver_id"]] if payload.get("driver_id") else []
         if topic == "payment.completed":
             return []  # payment.completed carries trip_id, not rider_id -- resolved via ride.completed's own notification instead
         return []
