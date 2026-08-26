@@ -370,7 +370,7 @@ class TripService:
             uow.emit(
                 Topic.RIDE_CANCELLED, trip.city_id,
                 RideCancelled(
-                    trip_id=trip.trip_id, city_id=trip.city_id,
+                    trip_id=trip.trip_id, city_id=trip.city_id, rider_id=trip.rider_id, driver_id=trip.driver_id,
                     cancelled_by="RIDER" if principal.role == Role.RIDER else "SYSTEM",
                     reason=reason, fee_applied=fee,
                 ).model_dump(mode="json"),
@@ -398,6 +398,18 @@ class TripService:
                     max_dispatch_attempts=self._settings.max_dispatch_attempts,
                     field_updates={"driver_id": None, "cancelled_at": utcnow(), "cancelled_by": "DRIVER"},
                     actor_role="DRIVER", actor_id=driver_id,
+                )
+                # Round 10 stakeholder council: this terminal path (CANCELLED_BY_DRIVER,
+                # attempts exhausted) never emitted a ride.cancelled event at all -- the
+                # rider's own page still updates live via publish_trip_update below (the
+                # Round 2 status toast), but no persisted notification-inbox entry was
+                # ever created for it, unlike every other cancellation path.
+                uow.emit(
+                    Topic.RIDE_CANCELLED, trip.city_id,
+                    RideCancelled(
+                        trip_id=trip.trip_id, city_id=trip.city_id, rider_id=trip.rider_id, driver_id=driver_id,
+                        cancelled_by="DRIVER", fee_applied=0.0,
+                    ).model_dump(mode="json"),
                 )
         await publish_trip_update(self._redis, trip_id, {"status": trip.status})
         from services.trip.location_client import set_driver_online_again

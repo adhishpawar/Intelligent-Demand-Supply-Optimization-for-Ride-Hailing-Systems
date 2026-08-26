@@ -23,7 +23,10 @@ def user_channel(user_id: str) -> str:
 TEMPLATES = {
     "ride.requested": ("Ride requested", "Looking for a nearby driver..."),
     "ride.assigned": ("Driver assigned", "Your driver is on the way."),
-    "ride.completed": ("Trip completed", "Your trip has ended. Fare: {fare_final}"),
+    # Round 10 stakeholder council: {fare_final} rendered whatever str(float) gave --
+    # no currency symbol, no guaranteed 2-decimal formatting. Cosmetic on its own,
+    # but worth fixing alongside ride.cancelled below.
+    "ride.completed": ("Trip completed", "Your trip has ended. Fare: ₹{fare_final:.2f}"),
     "ride.cancelled": ("Trip cancelled", "Your trip was cancelled."),
     "payment.completed": ("Payment {status}", "Your payment of {amount} {status_lower}."),
 }
@@ -72,6 +75,17 @@ class NotificationFanout:
         return []
 
     def _render(self, topic: str, payload: dict) -> tuple[str, str]:
+        if topic == "ride.cancelled":
+            # Round 10 stakeholder council: this notification -- sent to both rider
+            # and driver (see _recipients_for) -- said "cancelled" and nothing else,
+            # even after Round 9 made cancellation fees a real charge/payout. One
+            # neutral wording works for both sides: a rider reads it as what they
+            # were charged, a driver reads it as what they were compensated.
+            fee = payload.get("fee_applied") or 0
+            if fee > 0:
+                return "Trip cancelled", f"Your trip was cancelled. A ₹{fee:.2f} cancellation fee applies."
+            return "Trip cancelled", "Your trip was cancelled."
+
         title_tpl, body_tpl = TEMPLATES.get(topic, (topic, "{}"))
         try:
             ctx = {**payload, "status_lower": str(payload.get("status", "")).lower()}
