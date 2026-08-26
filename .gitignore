@@ -1,4 +1,4 @@
 *.csv
 venv
-main.py
+/main.py
 *.pyc
