@@ -5,6 +5,7 @@ import StatusPill from "../components/StatusPill";
 import { api, loadSession, wsUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useReconnectingSocket } from "../hooks/useReconnectingSocket";
 
 const PING_INTERVAL_MS = 3000;
 const TRIP_STORAGE_KEY = "ridehail_driver_current_trip";
@@ -19,7 +20,6 @@ export default function DriverPage() {
 
   const mapRef = useRef(null);
   const selfMarkerRef = useRef(null);
-  const offerWsRef = useRef(null);
   const pingTimerRef = useRef(null);
   const pollTimerRef = useRef(null);
   const posRef = useRef({ lat: PUNE_CENTER[0] + (Math.random() - 0.5) * 0.02, lng: PUNE_CENTER[1] + (Math.random() - 0.5) * 0.02 });
@@ -84,35 +84,26 @@ export default function DriverPage() {
     return () => clearInterval(pingTimerRef.current);
   }, [online, sendPing]);
 
-  // ---------- Offer WS + catch-up ----------
+  // ---------- Offer WS (self-reconnecting) + catch-up ----------
   // Redis pub/sub (the live push) has no replay: if this WS connects AFTER an offer
-  // was already published (a reload, a reconnect after a network blip), the push is
-  // gone forever and the driver would silently never see an offer the backend still
-  // holds active for them. A REST catch-up call on every connect closes that gap —
-  // same "never trust a single path" principle the rest of tonight's build applies
-  // to Kafka/the outbox; here it applies to a live WS push instead.
-  useEffect(() => {
-    if (!online) {
-      offerWsRef.current?.close();
-      return;
-    }
-    let cancelled = false;
-    api.get(`/v1/drivers/${userId}/current-offer`).then((resp) => {
-      if (!cancelled && resp.offer) setOffer({ ...resp.offer, eta_seconds: 0 });
-    }).catch(() => {});
-
-    const s = loadSession();
-    const ws = new WebSocket(wsUrl("trip", `/v1/ws/drivers/${userId}/offers`, s.access_token));
-    ws.onmessage = (evt) => {
+  // was already published (a reload, a network blip, or a reconnect after a drop),
+  // the push is gone forever and the driver would silently never see an offer the
+  // backend still holds active for them. A REST catch-up call on every (re)connect
+  // — via `onOpen`, so it fires after the FIRST connect and every automatic
+  // reconnect alike — closes that gap. Same "never trust a single path" principle
+  // applied elsewhere tonight (the outbox relay, the payment reconciler).
+  const offerWsUrl = online ? wsUrl("trip", `/v1/ws/drivers/${userId}/offers`, loadSession()?.access_token) : null;
+  useReconnectingSocket(offerWsUrl, {
+    onOpen: () => {
+      api.get(`/v1/drivers/${userId}/current-offer`).then((resp) => {
+        if (resp.offer) setOffer({ ...resp.offer, eta_seconds: 0 });
+      }).catch(() => {});
+    },
+    onMessage: (evt) => {
       const data = JSON.parse(evt.data);
       if (data.type === "OFFER") setOffer(data);
-    };
-    offerWsRef.current = ws;
-    return () => {
-      cancelled = true;
-      ws.close();
-    };
-  }, [online, userId]);
+    },
+  });
 
   // Offer countdown (never an indefinite spinner -- PLAN §6.4 D2's rule applies
   // symmetrically on the driver side: the offer clearly expires visibly).
