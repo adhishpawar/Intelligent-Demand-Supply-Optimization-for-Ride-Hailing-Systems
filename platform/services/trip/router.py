@@ -9,7 +9,9 @@ from libs.common.errors import ForbiddenError
 from libs.security.principal import Principal, Role
 from libs.security.rbac import require_roles
 from services.trip.container import get_redis, get_trip_service
-from services.trip.schemas import CancelRequest, RequestRideRequest, RespondRequest, TripResponse
+from services.trip.schemas import (
+    CancelRequest, PaymentResultRequest, RateAnnotationRequest, RequestRideRequest, RespondRequest, TripResponse,
+)
 from services.trip.service import TripService
 from services.trip.ws_fanout import driver_channel, trip_channel
 
@@ -104,6 +106,30 @@ async def driver_cancel_trip(
     svc: TripService = Depends(get_trip_service),
 ):
     return _to_response(await svc.driver_cancel(trip_id, principal.user_id))
+
+
+@router.post("/v1/trips/{trip_id}/payment-result", response_model=TripResponse)
+async def payment_result(
+    trip_id: str, body: PaymentResultRequest,
+    _principal: Principal = Depends(require_roles(Role.ADMIN)),  # internal call from Payment service only
+    svc: TripService = Depends(get_trip_service),
+):
+    if body.status == "SUCCEEDED":
+        trip = await svc.mark_payment_result(trip_id, succeeded=True)
+    elif body.status == "PAID_PENDING_RETRY_SUCCEEDED":
+        trip = await svc.mark_payment_retry_succeeded(trip_id)
+    else:
+        trip = await svc.mark_payment_result(trip_id, succeeded=False)
+    return _to_response(trip)
+
+
+@router.post("/v1/trips/{trip_id}/rate-annotation", response_model=TripResponse)
+async def rate_annotation(
+    trip_id: str, body: RateAnnotationRequest,
+    _principal: Principal = Depends(require_roles(Role.ADMIN)),  # internal call from Ratings service only
+    svc: TripService = Depends(get_trip_service),
+):
+    return _to_response(await svc.rate_trip_annotation(trip_id, body.rater_role, body.rater_id))
 
 
 async def _ws_pubsub_relay(ws: WebSocket, channel: str) -> None:

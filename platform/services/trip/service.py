@@ -87,6 +87,14 @@ class TripService:
             if trip.status != "MATCHING":
                 return  # already resolved by a concurrent path; nothing to do
 
+            if trip.current_offer_driver_id:
+                # A prior offer is being superseded by this redispatch round (it
+                # timed out — the orchestrator only calls dispatch_step for trips
+                # whose offer already expired). Release that driver's claim now
+                # rather than waiting out its TTL, so they're immediately eligible
+                # again for a DIFFERENT trip's dispatch.
+                await self._matching.release_claim(driver_id=trip.current_offer_driver_id, trip_id=trip_id)
+
             excluded = await self._excluded_driver_ids(trip_id)
             result = await self._matching.dispatch(
                 trip_id=trip_id, city_id=trip.city_id,
@@ -134,9 +142,12 @@ class TripService:
             trip = await repo.get(trip_id)
             if trip.status != "MATCHING":
                 return
+            stale_offer_driver = trip.current_offer_driver_id
             trip = await repo.apply_transition(
                 trip_id, Event.EXPIRE, now=utcnow(), max_dispatch_attempts=self._settings.max_dispatch_attempts,
             )
+        if stale_offer_driver:
+            await self._matching.release_claim(driver_id=stale_offer_driver, trip_id=trip_id)
         await publish_trip_update(self._redis, trip_id, {"status": trip.status})
 
     async def _excluded_driver_ids(self, trip_id: str) -> list[str]:
@@ -187,6 +198,13 @@ class TripService:
                 raise ForbiddenError(f"unknown action {action!r}")
 
         await publish_trip_update(self._redis, trip_id, {"status": trip.status})
+        # The claim has served its purpose the instant the driver responds, either
+        # way -- release it now rather than waiting out its TTL (see PLAN §matching
+        # claim.py docstring / PROGRESS.md for the bug this fixes: a driver
+        # completing a ride would otherwise stay unmatchable for up to
+        # claim_ttl_seconds even after driver_profiles.status correctly returns to
+        # ONLINE).
+        await self._matching.release_claim(driver_id=driver_id, trip_id=trip_id)
         if action == "ACCEPT":
             from services.trip.location_client import set_driver_on_trip
             await set_driver_on_trip(self._settings, driver_id)
@@ -243,6 +261,52 @@ class TripService:
         await publish_trip_update(self._redis, trip.trip_id, {"status": trip.status, "fare_final": trip.fare_final})
         from services.trip.location_client import set_driver_online_again
         await set_driver_online_again(self._settings, trip.driver_id)
+        return trip
+
+    async def mark_payment_result(self, trip_id: str, succeeded: bool) -> TripRecord:
+        """Called by the Payment service (services/payment/trip_client.py) after a
+        charge attempt — never by a client directly. This is the only place
+        COMPLETED -> PAID / PAID_PENDING happens, keeping fsm.apply() the single
+        source of truth even though the trigger originates in a different service."""
+        event = Event.PAYMENT_SUCCEEDED if succeeded else Event.PAYMENT_FAILED
+        async with self._uow_factory() as uow:
+            repo = TripRepository(uow.session)
+            trip = await repo.apply_transition(
+                trip_id, event, now=utcnow(), max_dispatch_attempts=self._settings.max_dispatch_attempts,
+                actor_role="SYSTEM", actor_id=None,
+            )
+        await publish_trip_update(self._redis, trip_id, {"status": trip.status})
+        return trip
+
+    async def mark_payment_retry_succeeded(self, trip_id: str) -> TripRecord:
+        async with self._uow_factory() as uow:
+            repo = TripRepository(uow.session)
+            trip = await repo.apply_transition(
+                trip_id, Event.PAYMENT_RETRY_SUCCEEDED, now=utcnow(),
+                max_dispatch_attempts=self._settings.max_dispatch_attempts, actor_role="SYSTEM", actor_id=None,
+            )
+        await publish_trip_update(self._redis, trip_id, {"status": trip.status})
+        return trip
+
+    async def rate_trip_annotation(self, trip_id: str, rater_role: str, rater_id: str) -> TripRecord:
+        """Fires the optional PAID -> RATED annotation transition (the documented I4
+        exception in fsm.py). Called ONLY by the Ratings service, as an internal
+        system call, AFTER it has independently verified the rater actually owns a
+        side of this trip and recorded the rating row — Trip trusts that check here
+        and only tracks that a rating happened, not its content. Both rider and
+        driver may rate independently, but the FSM only has room for ONE PAID->RATED
+        edge — the second rater's call is a deliberate idempotent no-op on the
+        status, not an error."""
+        async with self._uow_factory() as uow:
+            repo = TripRepository(uow.session)
+            trip = await repo.get(trip_id)
+            if trip.status != "PAID":
+                return trip  # already RATED (or not yet PAID) -- idempotent no-op
+            trip = await repo.apply_transition(
+                trip_id, Event.RATE, now=utcnow(), max_dispatch_attempts=self._settings.max_dispatch_attempts,
+                actor_role=rater_role, actor_id=rater_id,
+            )
+        await publish_trip_update(self._redis, trip_id, {"status": trip.status})
         return trip
 
     async def cancel(self, trip_id: str, principal: Principal, reason: str | None) -> TripRecord:

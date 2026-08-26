@@ -15,8 +15,9 @@ from libs.common.config import Settings, get_settings
 from libs.geo.cities import get_city
 from libs.security.principal import Role
 from libs.security.rbac import require_roles
-from services.matching.container import get_dispatcher_for_city, get_session
-from services.matching.schemas import DispatchRequest, DispatchResponse
+from services.matching.claim import DriverClaimService
+from services.matching.container import get_dispatcher_for_city, get_redis, get_session
+from services.matching.schemas import DispatchRequest, DispatchResponse, ReleaseClaimRequest
 
 router = APIRouter()
 
@@ -42,3 +43,23 @@ async def dispatch(
         at=datetime.now(timezone.utc),
     )
     return DispatchResponse(**result.__dict__)
+
+
+@router.post("/v1/matching/release-claim")
+async def release_claim(
+    body: ReleaseClaimRequest,
+    _principal=Depends(require_roles(Role.ADMIN)),
+    settings: Settings = Depends(get_settings),
+):
+    """Explicit claim release (fixes a real bug found in testing tonight): a
+    driver's Layer-1 claim (claim.py) previously only expired via TTL, meaning a
+    driver who accepted-then-completed a ride stayed effectively unmatchable for up
+    to `claim_ttl_seconds` afterward even though driver_profiles.status had already
+    correctly returned to ONLINE. Trip service calls this immediately after ACCEPT,
+    REJECT, and every redispatch round that clears an old offer, so a driver's claim
+    lifetime tracks their ACTUAL offer lifecycle rather than a fixed timer once the
+    outcome is already known.
+    """
+    claims = DriverClaimService(get_redis(), settings.claim_ttl_seconds)
+    await claims.release(body.driver_id, body.trip_id)
+    return {"released": True}

@@ -35,6 +35,11 @@ async def get_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+def get_redis() -> Redis:
+    assert _redis is not None
+    return _redis
+
+
 def get_dispatcher_for_city(city_id: str, settings: Settings) -> Dispatcher:
     assert _redis is not None
     if city_id not in _dispatchers:

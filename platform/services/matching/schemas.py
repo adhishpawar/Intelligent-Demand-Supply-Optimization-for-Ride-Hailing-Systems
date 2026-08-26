@@ -20,3 +20,8 @@ class DispatchResponse(BaseModel):
     eta_seconds: float | None
     distance_m: float | None
     candidates_considered: int
+
+
+class ReleaseClaimRequest(BaseModel):
+    driver_id: str
+    trip_id: str
