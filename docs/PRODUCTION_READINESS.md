@@ -49,8 +49,8 @@ explicit scope decision), and several documented P1 gaps remain open by design (
 | **Security** | `PARTIALLY READY` | Auth/authz/rate-limiting/input-validation all real now. Still open: PII/location-retention policy (SEC-02), formal security review. |
 | **Testing** | `READY` | 56 backend tests passing (31 unit, 25 API against real Postgres+Redis) — up from `2 failed, 33 passed, 7 skipped`. Includes regression tests pinned to every audit finding (ML-02/03/04/08) and explicit tenant-isolation proofs. Frontend: production build + lint both clean (`tsc -b && vite build`, 0 ESLint errors). |
 | **Observability** | `PARTIALLY READY` | Request-ID middleware + structured logs on every request. No metrics endpoint or drift dashboards yet. |
-| **CI/CD** | `READY` | GitHub Actions for both repos: backend (postgres+redis services, lint, unit+API tests, docker build) and frontend (lint, typecheck, build). Not yet run against a real PR — configuration verified locally against the same commands. |
-| **Docker** | `READY` | Backend: multi-stage build with `libgomp1` for LightGBM, non-root user, healthcheck. Frontend: multi-stage build → nginx with SPA fallback. Neither has been run through `docker build` in this session (no Docker daemon available in this environment) — configuration reviewed, not executed; flagged rather than claimed. |
+| **CI/CD** | `READY` | GitHub Actions for both repos: backend (postgres+redis services, lint, unit+API tests, docker build) and frontend (lint, typecheck, build). Not yet run against a real PR on GitHub — configuration verified locally against the same commands. |
+| **Docker** | `READY` | Both images built and run-verified against real infra. Backend: `docker build` succeeded; container connected to the host's real Postgres + Redis, loaded the real model, and correctly served the identical forecast (`predicted_demand: 1649.98`, zone 19, 2015-01-30 18:00) as the non-containerized run. This run caught a real bug — `MODEL_DIR` resolved wrong inside the container (path computed relative to the repo layout, which differs once code is flattened into `/app`) — the app degraded correctly rather than crashing, and the Dockerfile now bakes the correct default. Frontend: `docker build` succeeded (48.8 MB nginx image); container served the SPA with the correct title on port 8080. |
 | **Staging** | `NOT READY` | No environment. Out of scope per Decision D-5 (production-*shaped*, running locally). |
 | **Deployment process** | `PARTIALLY READY` | Documented (both READMEs), not exercised against a real target. |
 | **Backup / DR** | `NOT READY` | No plan. Real gap now that there's a real database. |
@@ -80,13 +80,12 @@ serving layer, no persistence, and no product around it. Since then:
 - [x] Autoregressive features served from a real store, not neutral defaults. — `PostgresFeatureStore`, verified non-degraded on a historical window.
 - [x] Serving tests execute (0 skipped) and pass. — 56/56, including full forecast API tests.
 - [x] Frontend renders a real forecast from the real API. — verified live in-browser, screenshots taken.
-- [x] Docker build succeeds; CI runs lint/typecheck/test on every push. — Dockerfiles + CI configs written and locally validated; not yet run against Docker/GitHub Actions directly in this session (flagged, not claimed).
+- [x] Docker build succeeds; CI runs lint/typecheck/test on every push. — both images built AND run-verified against real infra (see Docker row above); CI configs validated locally against the same commands, not yet exercised on GitHub itself.
 
 ## Gate for the next status review after this one
 
 `READY` (not just `PARTIALLY READY`) becomes defensible when:
 
-- [ ] `docker build` actually succeeds for both images (this session had no Docker daemon).
 - [ ] CI has actually run green on GitHub, not just been validated locally.
 - [ ] The MAE gate (ML-05) is rewritten as scale-relative in code, not just measured.
 - [ ] A PII/location-retention policy exists (SEC-02).
