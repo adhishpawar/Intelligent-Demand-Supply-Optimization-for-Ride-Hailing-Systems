@@ -27,7 +27,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    MODEL_DIR=/app/models
+
+# Settings.model_dir defaults to a path computed relative to this file's
+# location in the repo (REPO_ROOT / "models") -- correct for local dev, but
+# meaningless once the code is copied flat into /app/app/... in a container.
+# MODEL_DIR above overrides it (pydantic-settings reads env vars matching
+# field names); mount or copy the model artifact to /app/models to match.
 
 WORKDIR /app
 COPY app ./app
