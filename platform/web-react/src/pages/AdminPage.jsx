@@ -141,7 +141,7 @@ export default function AdminPage() {
   return (
     <div id="app">
       <div className="topbar">
-        <div className="brand"><span className="dot" /> Glovatrix <span className="role-badge admin">Admin</span></div>
+        <div className="brand"><span className="dot" /> RideOps <span className="role-badge admin">Admin</span></div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <select value={cityId} onChange={(e) => setCityId(e.target.value)} style={{ width: "auto" }}>
             <option value="pune">Pune</option>

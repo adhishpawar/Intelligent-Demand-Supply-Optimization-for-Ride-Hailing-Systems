@@ -1,4 +1,4 @@
-# Glovatrix — Ride-Hailing Operational Platform
+# RideOps — Ride-Hailing Operational Platform
 
 A working, demoable, full-stack ride-hailing system built from the design in
 [`ride_hailing_HLD_LLD.md`](../Sys) — real geospatial matching, a real state machine,
