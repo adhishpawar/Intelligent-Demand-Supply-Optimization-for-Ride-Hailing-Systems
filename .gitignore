@@ -1,4 +1,59 @@
+# ---------------------------------------------------------------------------
+# Data
+# ---------------------------------------------------------------------------
+# Raw and derived datasets are large (9+ GB) and reproducible from the
+# documented acquisition path -- they are deliberately not in version control.
 *.csv
-venv
-/main.py
+!models/zone_centroids.csv        # 497 B; the zone map is part of the contract
+
+# ---------------------------------------------------------------------------
+# Model artifacts
+# ---------------------------------------------------------------------------
+# Binary artifacts are build outputs, not source. The metadata sidecar IS
+# tracked: it records which contract/version/metrics a deployment expects, and
+# is small and diffable.
+*.joblib
+*.pkl
+!models/*.metadata.json
+
+# ---------------------------------------------------------------------------
+# Experiment tracking
+# ---------------------------------------------------------------------------
+mlruns/
+mlartifacts/
+eda_outputs/
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+venv/
+.venv/
+__pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+/main.py
+
+# ---------------------------------------------------------------------------
+# Environment / secrets
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# ---------------------------------------------------------------------------
+# Local databases
+# ---------------------------------------------------------------------------
+*.db
+*.sqlite3
+
+# ---------------------------------------------------------------------------
+# Editor / OS
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
