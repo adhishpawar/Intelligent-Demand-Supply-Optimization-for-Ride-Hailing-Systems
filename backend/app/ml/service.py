@@ -24,7 +24,7 @@ import pandas as pd
 from app.core.config import Settings
 from app.ml.contract import WINDOW_MINUTES
 from app.ml.features import assemble_row
-from app.ml.registry import ModelNotLoadedError, ModelRegistry
+from app.ml.registry import ModelRegistry
 
 logger = logging.getLogger(__name__)
 

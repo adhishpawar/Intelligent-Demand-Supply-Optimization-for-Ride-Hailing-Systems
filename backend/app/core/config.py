@@ -54,7 +54,11 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
 
     # --- database ---
-    database_url: str = "sqlite+aiosqlite:///./backend/rideops_ml.db"
+    database_url: str = "postgresql+asyncpg://ridehail:ridehail_dev_pw@localhost:5433/rideops_ml"
+
+    # --- cache / rate limiting ---
+    redis_url: str = "redis://localhost:6380/1"
+    inference_rate_limit_per_minute: int = 60
 
     # --- paths ---
     data_dir: Path = REPO_ROOT / "Data_Processing"

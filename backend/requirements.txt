@@ -1,0 +1,32 @@
+# --- web framework ---
+fastapi==0.135.3
+uvicorn[standard]==0.44.0
+pydantic==2.12.5
+pydantic-settings==2.15.0
+email-validator==2.3.0
+python-multipart==0.0.32
+
+# --- database ---
+sqlalchemy==2.0.49
+asyncpg==0.31.0
+psycopg2-binary==2.9.12
+greenlet==3.4.0
+alembic==1.18.4
+
+# --- cache / rate limiting ---
+redis==8.1.0
+
+# --- auth ---
+pyjwt[crypto]==2.13.0
+bcrypt==5.0.0
+
+# --- ML ---
+lightgbm==4.6.0
+scikit-learn==1.8.0
+numpy==2.4.4
+pandas==2.3.3
+joblib==1.5.3
+mlflow==3.11.1
+
+# --- http client (internal integrations, tests) ---
+httpx==0.28.1
