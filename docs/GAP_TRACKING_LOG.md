@@ -87,7 +87,7 @@ was actually executed and what it printed.
 |---|---|---|---|---|---|---|---|
 | FE-01 | ML platform frontend | P0 | Does not exist. There is no UI for demand forecasts, supply, recommendations, or model health. FR-10 (admin analytics) is entirely unmet. | The product has no user surface. | New separate React + TypeScript + Vite repository. | **OPEN** | FIXED |
 | FE-02 | Operational-platform UI confusion | P2 | `platform/web-react/` exists and is the **operational** ride-hailing UI (rider/driver/admin), merged in PR #1. It is not the ML platform UI. | Easy to mistake one for the other; they have different audiences and lifecycles. | Keep separate; document the boundary. | **OPEN** | — |
-| FE-03 | Product naming | P2 | UI strings say "Glovatrix" in 4 source files (+2 build outputs). Owner has asked for this to change. | Wrong brand shipped. | Single source-of-truth name constant; rename. | **OPEN** | `grep -rl Glovatrix` → `README.md`, `web-react/index.html`, `AdminPage.jsx`, `DriverPage.jsx`, `LoginPage.jsx`, `RiderPage.jsx`. |
+| FE-03 | Product naming | P2 | UI strings said "Glovatrix" in 6 source files. Owner confirmed the product name is **RideOps**. | Wrong brand shipped. | Rename every occurrence to RideOps. | **FIXED** | `sed -i 's/Glovatrix/RideOps/g'` across `README.md`, `web-react/index.html`, `AdminPage.jsx`, `DriverPage.jsx`, `LoginPage.jsx`, `RiderPage.jsx`, and `Sys/part1.md`'s title. Re-swept the repo (excluding `venv`/`node_modules`/`dist`) — zero remaining occurrences outside this log's own historical record of the finding. |
 
 ---
 

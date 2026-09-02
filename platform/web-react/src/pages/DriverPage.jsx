@@ -270,7 +270,7 @@ export default function DriverPage() {
   return (
     <div id="app">
       <div className="topbar">
-        <div className="brand"><span className="dot" /> Glovatrix <span className="role-badge driver">Driver</span></div>
+        <div className="brand"><span className="dot" /> RideOps <span className="role-badge driver">Driver</span></div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <NotificationBell />
           <span className="muted">{userId?.slice(0, 8)}</span>

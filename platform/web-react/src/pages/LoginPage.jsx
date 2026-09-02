@@ -55,7 +55,7 @@ export default function LoginPage() {
   return (
     <div className="login-screen">
       <div className="login-box">
-        <h1>🚕 Glovatrix</h1>
+        <h1>🚕 RideOps</h1>
         <div className="sub">Sign in — your account's role decides your interface</div>
 
         {step === "phone" ? (

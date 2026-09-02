@@ -1,5 +1,5 @@
 # Intelligent Demand-Supply Optimization Platform
-## An ML Decision Layer for the Glovatrix Ride-Hailing System — Engineering Design Document
+## An ML Decision Layer for the RideOps Ride-Hailing System — Engineering Design Document
 
 **Author:** ML Platform / Distributed Systems Architecture
 **Status:** Proposal for Review

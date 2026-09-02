@@ -249,7 +249,7 @@ export default function RiderPage() {
   return (
     <div id="app">
       <div className="topbar">
-        <div className="brand"><span className="dot" /> Glovatrix <span className="role-badge rider">Rider</span></div>
+        <div className="brand"><span className="dot" /> RideOps <span className="role-badge rider">Rider</span></div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <button className="link" onClick={() => setShowHistory(true)}>My rides</button>
           <NotificationBell />
@@ -422,7 +422,7 @@ function TripPanel({
       )}
       {status === "RATED" && (
         <>
-          <div className="muted" style={{ marginTop: 10 }}>Thanks for riding with Glovatrix!</div>
+          <div className="muted" style={{ marginTop: 10 }}>Thanks for riding with RideOps!</div>
           <button className="btn primary" onClick={onBookAnother}>Book another ride</button>
         </>
       )}
