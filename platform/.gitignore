@@ -1,0 +1,36 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Downloaded native infra binaries (PLAN §4.4/pivot note in PROGRESS.md) — large,
+# re-downloadable, not source. pgdata/pglogs are runtime state, never source either.
+# Broad globs (pgdata*, pglogs*, not just the exact names) deliberately -- a cold-
+# start test this session once created pgdata.bak/pglogs.bak as safety-copy
+# directories and they briefly got staged (hundreds of MB of Postgres internals)
+# before the exact-name-only patterns here were caught as insufficient.
+infra/native/*.zip
+infra/native/*.tgz
+infra/native/pg/
+infra/native/pgdata*/
+infra/native/pglogs*/
+infra/native/redis/*.exe
+infra/native/redis/*.pdb
+infra/native/redis/*.dll
+infra/native/redis/00-RELEASENOTES
+infra/native/redis/*.txt
+infra/native/kafka/
+infra/native/kafka_*/
+
+# run.ps1 / stop.ps1 runtime state (PID tracking, logs, dependency-hash cache) --
+# never source, regenerated on every run.
+.run/
+.run.bak/
+
+# runtime logs
+*.log
+logs/
+
+# env
+.env
